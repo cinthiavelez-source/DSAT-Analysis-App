@@ -206,6 +206,25 @@ tr:hover td{background:#FAFAFA}
 .an-period-nav{display:flex;align-items:center;gap:.5rem}
 .an-period-label{font-size:.85rem;font-weight:600;min-width:200px;text-align:center;color:#1E293B}
 
+/* ── GUIDE ACCORDION ── */
+.guide-section{border:1.5px solid #E2E8F0;border-radius:.75rem;margin-bottom:.75rem;overflow:hidden}
+.guide-section-header{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;cursor:pointer;background:#fff;transition:background .15s;user-select:none}
+.guide-section-header:hover{background:#F8FAFC}
+.guide-section-header.open{background:#F1F5F9;border-bottom:1.5px solid #E2E8F0}
+.guide-section-title{font-weight:700;font-size:.95rem;color:#1E293B;display:flex;align-items:center;gap:.6rem}
+.guide-chevron{font-size:.8rem;color:#94A3B8;transition:transform .2s}
+.guide-chevron.open{transform:rotate(180deg)}
+.guide-section-body{display:none;padding:1.25rem 1.5rem;background:#fff;line-height:1.7;font-size:.875rem;color:#374151}
+.guide-section-body.open{display:block}
+.guide-section-body h4{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#94A3B8;margin:1rem 0 .4rem}
+.guide-section-body h4:first-child{margin-top:0}
+.guide-section-body p{margin-bottom:.75rem}
+.guide-section-body ul{padding-left:1.25rem;margin-bottom:.75rem}
+.guide-section-body li{margin-bottom:.3rem}
+.guide-section-body .step{display:flex;gap:.75rem;align-items:flex-start;margin-bottom:.6rem}
+.guide-section-body .step-num{background:#4F46E5;color:#fff;border-radius:50%;width:22px;height:22px;font-size:.72rem;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:.1rem}
+.guide-tag{display:inline-block;padding:.15rem .55rem;border-radius:99px;font-size:.72rem;font-weight:700;margin:.1rem}
+
 /* ── RESPONSIVE ── */
 @media(max-width:768px){
   .navbar{padding:0 1rem;min-height:56px}
@@ -262,6 +281,12 @@ tr:hover td{background:#FAFAFA}
     </button>
     <button class="nav-btn" data-page="analytics" onclick="navTo('analytics')" id="nav-analytics">
       <span>📈</span><span class="nav-label">Analytics</span>
+    </button>
+    <button class="nav-btn" data-page="guide" onclick="navTo('guide')" id="nav-guide">
+      <span>📖</span><span class="nav-label">Guide</span>
+    </button>
+    <button class="nav-btn" data-page="corrections" onclick="navTo('corrections')" id="nav-corrections" style="display:none">
+      <span>✏️</span><span class="nav-label">Corrections</span>
     </button>
     <button class="nav-btn" data-page="admin" onclick="navTo('admin')" id="nav-admin" style="display:none">
       <span>⚙️</span><span class="nav-label">Admin</span>
@@ -661,6 +686,82 @@ tr:hover td{background:#FAFAFA}
     </div>
   </div>
 
+  <!-- ── GUIDE ────────────────────────────────────────────────────────────────── -->
+  <div class="page" id="page-guide">
+    <div class="page-header">
+      <div>
+        <div class="page-title">📖 App Guide</div>
+        <div class="page-sub">How the CookUnity DSAT Tracker works</div>
+      </div>
+    </div>
+
+    <!-- Accordion sections -->
+    <div id="guide-accordion"></div>
+  </div>
+
+  <!-- ── CORRECTIONS ──────────────────────────────────────────────────────────── -->
+  <div class="page" id="page-corrections">
+    <div class="page-header">
+      <div>
+        <div class="page-title">✏️ Corrections Report</div>
+        <div class="page-sub">Admin edits to submitted DSATs — breakdown by submitter</div>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="card" style="padding:1rem 1.5rem;margin-bottom:1.25rem">
+      <div style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end">
+        <div class="form-group" style="min-width:150px;margin:0">
+          <label style="font-size:.75rem">From Date</label>
+          <input type="date" id="corr-filter-from" onchange="renderCorrections()">
+        </div>
+        <div class="form-group" style="min-width:150px;margin:0">
+          <label style="font-size:.75rem">To Date</label>
+          <input type="date" id="corr-filter-to" onchange="renderCorrections()">
+        </div>
+        <div class="form-group" style="min-width:180px;margin:0">
+          <label style="font-size:.75rem">Submitter</label>
+          <select id="corr-filter-submitter" onchange="renderCorrections()">
+            <option value="">All Submitters</option>
+          </select>
+        </div>
+        <div class="form-group" style="min-width:180px;margin:0">
+          <label style="font-size:.75rem">Edited By (Admin)</label>
+          <select id="corr-filter-editor" onchange="renderCorrections()">
+            <option value="">All Admins</option>
+          </select>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="clearCorrFilters()">✕ Clear</button>
+      </div>
+    </div>
+
+    <!-- KPI Stats -->
+    <div class="stats-grid" id="corr-stats"></div>
+
+    <!-- Chart + Table row -->
+    <div class="charts-grid" style="grid-template-columns:1fr 2fr">
+      <div class="chart-card">
+        <div class="chart-title">Top Submitters by Correction Rate</div>
+        <div class="chart-wrap"><canvas id="corr-chart"></canvas></div>
+      </div>
+      <div class="card" style="margin:0">
+        <div class="card-title">📋 Breakdown by Submitter <small style="font-weight:400;color:#64748B;font-size:.8rem">— click a row to expand corrected records</small></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th style="min-width:200px">Submitter</th>
+              <th>Total Submitted</th>
+              <th>Corrected</th>
+              <th>Correction Rate</th>
+              <th>Last Corrected</th>
+            </tr></thead>
+            <tbody id="corr-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div><!-- /main -->
 
 <!-- ══ MODAL: VIEW / EDIT DSAT ════════════════════════════════════════════════ -->
@@ -893,7 +994,7 @@ function normalizeRow(r) {
 }
 
 // ══ NAVIGATION ════════════════════════════════════════════════════════════════
-const PAGES = ['dashboard','submit','records','queue','analytics','admin'];
+const PAGES = ['dashboard','submit','records','queue','analytics','corrections','guide','admin'];
 
 function navTo(page) {
   currentPage = page;
@@ -904,11 +1005,13 @@ function navTo(page) {
   document.querySelectorAll('.nav-btn[data-page]').forEach(b =>
     b.classList.toggle('active', b.dataset.page===page)
   );
-  if (page==='dashboard')  renderDashboard(cachedData);
-  else if (page==='records')   renderRecords(cachedData);
-  else if (page==='queue')     renderQueue(cachedData);
-  else if (page==='analytics') { buildAnalyticsFilters(); renderAnalytics(); }
-  else if (page==='admin')     { switchAdminTab('roles'); loadRoles(); renderHierarchyTable(); }
+  if (page==='dashboard')    renderDashboard(cachedData);
+  else if (page==='records')     renderRecords(cachedData);
+  else if (page==='queue')       renderQueue(cachedData);
+  else if (page==='analytics')   { buildAnalyticsFilters(); renderAnalytics(); }
+  else if (page==='corrections') renderCorrections();
+  else if (page==='guide')       renderGuide();
+  else if (page==='admin')       { switchAdminTab('roles'); loadRoles(); renderHierarchyTable(); }
 }
 
 // ══ ROLE UI ═══════════════════════════════════════════════════════════════════
@@ -920,9 +1023,10 @@ function updateRoleUI() {
   rb.textContent = cachedRole;
   rb.className = 'role-badge role-'+cachedRole;
 
-  document.getElementById('nav-submit').style.display = canSubmit() ? '' : 'none';
-  document.getElementById('nav-queue').style.display  = isSupervisor() ? '' : 'none';
-  document.getElementById('nav-admin').style.display  = isAdmin() ? '' : 'none';
+  document.getElementById('nav-submit').style.display      = canSubmit() ? '' : 'none';
+  document.getElementById('nav-queue').style.display       = isSupervisor() ? '' : 'none';
+  document.getElementById('nav-corrections').style.display = isAdmin() || cachedRole==='analyst' ? '' : 'none';
+  document.getElementById('nav-admin').style.display       = isAdmin() ? '' : 'none';
 
   // Queue badge
   const pending = cachedData.filter(r=>r.mainReason==='Agent - Related' && r.feedbackStatus==='Pending');
@@ -2049,6 +2153,276 @@ function yesnoBadge(v) {
   if (v==='YES') return '<span class="badge badge-yes">✓ YES</span>';
   if (v==='NO')  return '<span class="badge badge-no">✗ NO</span>';
   return '<span class="badge badge-na">—</span>';
+}
+
+// ══ GUIDE ═════════════════════════════════════════════════════════════════════
+const GUIDE_SECTIONS = [
+  {
+    icon: '🔐', title: 'Roles & Access Levels',
+    body: `
+      <h4>Who can do what</h4>
+      <p>Access in the app is determined by the email you sign in with. There are four roles:</p>
+      <ul>
+        <li><span class="guide-tag role-badge role-admin">Admin</span> <strong>Full access.</strong> Can submit DSATs, view all records, edit any submitted record, review disputes, manage roles and hierarchy, and see the Corrections report. Admins: Cinthia Velez, Gabriel Gonzalez, Daniella Giraldo.</li>
+        <li><span class="guide-tag role-badge role-supervisor">Supervisor</span> <strong>Feedback access.</strong> Can see the Feedback Queue for their agents, submit and update feedback, and escalate disputes to admin.</li>
+        <li><span class="guide-tag role-badge role-analyst">Analyst / Lead</span> <strong>Read + submit.</strong> Can submit DSAT analyses, view all records, analytics, and the Corrections report. Cannot edit submitted records.</li>
+        <li><span class="guide-tag role-badge role-viewer">Viewer</span> <strong>Read only.</strong> Can view the Dashboard and Records tabs. Cannot submit or edit anything.</li>
+      </ul>
+      <p>Roles are assigned by an Admin in the <strong>Admin → User Roles</strong> panel.</p>`
+  },
+  {
+    icon: '➕', title: 'How to Submit a DSAT Analysis',
+    body: `
+      <h4>When to submit</h4>
+      <p>A DSAT analysis should be completed for every customer satisfaction score below the threshold. Submit one record per DSAT ticket — do not combine multiple tickets.</p>
+      <h4>Step-by-step</h4>
+      <div class="step"><div class="step-num">1</div><div>Click <strong>New DSAT</strong> in the top nav. If you don't see it, your role may not have submit access.</div></div>
+      <div class="step"><div class="step-num">2</div><div>Fill in <strong>Date of Analysis</strong> (today's date, auto-filled) and <strong>DSAT Date</strong> (the date the low score was received).</div></div>
+      <div class="step"><div class="step-num">3</div><div>Enter the <strong>Ticket ID</strong> (numbers only).</div></div>
+      <div class="step"><div class="step-num">4</div><div>Search for the <strong>Specialist Name</strong> by typing in the search box. Select from the dropdown — this auto-fills the Supervisor and Manager fields from the hierarchy.</div></div>
+      <div class="step"><div class="step-num">5</div><div>Select the <strong>Main Reason</strong> for the DSAT (type to search). Then select the <strong>Sub-Reason</strong> that best describes the specific issue.</div></div>
+      <div class="step"><div class="step-num">6</div><div>Answer the three Yes/No questions: Was it preventable? Was the issue resolved (customer perspective)? Was the correct process followed (company perspective)?</div></div>
+      <div class="step"><div class="step-num">7</div><div>Fill in <strong>Supporting Details</strong>, <strong>Resolution Provided</strong>, and optionally <strong>Improvement Opportunities</strong>.</div></div>
+      <div class="step"><div class="step-num">8</div><div>Click <strong>Submit DSAT Analysis</strong>. If the reason is Agent-Related, the supervisor will automatically receive an email notification.</div></div>`
+  },
+  {
+    icon: '📊', title: 'DSAT Responsibility Categories',
+    body: `
+      <h4>The 5 main reason categories</h4>
+      <ul>
+        <li><span class="guide-tag badge badge-agent">Agent - Related</span> Issues caused by the specialist's behavior or handling — triggers the supervisor feedback workflow.</li>
+        <li><span class="guide-tag badge badge-customer">Customer Expectations</span> Customer had incorrect expectations about the product, policies, or service.</li>
+        <li><span class="guide-tag badge badge-process">Process - Related</span> Issues caused by internal processes, policies, or escalation flows.</li>
+        <li><span class="guide-tag badge badge-system">System - Related</span> Technical problems — app errors, login issues, payment failures, data sync problems.</li>
+        <li><span class="guide-tag badge badge-product">Product - Related</span> Issues with the food or delivery — quality, missing items, damage, labeling, 3PL delays.</li>
+      </ul>
+      <h4>How to choose the right reason</h4>
+      <p>Ask yourself: <em>What was the primary root cause of the customer's dissatisfaction?</em> If multiple factors were involved, choose the one with the highest impact. Use the Sub-Reason to add specificity.</p>
+      <p><strong>Important:</strong> Agent-Related is reserved for cases where the specialist's direct behavior or decision-making caused or worsened the DSAT — not just because an agent handled the ticket.</p>`
+  },
+  {
+    icon: '🔔', title: 'Supervisor Feedback Workflow (Agent-Related DSATs)',
+    body: `
+      <h4>Automatic trigger</h4>
+      <p>When a DSAT is submitted with <strong>Agent - Related</strong> as the main reason, the system automatically:</p>
+      <ul>
+        <li>Sets the feedback status to <span class="guide-tag badge badge-pending">Pending</span></li>
+        <li>Sends an email notification to the agent's supervisor with the ticket details</li>
+        <li>Starts a <strong>10-day SLA countdown</strong></li>
+      </ul>
+      <h4>Supervisor's responsibility</h4>
+      <p>Supervisors must navigate to the <strong>Feedback Queue</strong> tab and submit feedback within 10 days. The SLA bar turns amber within 3 days of the deadline and red when overdue.</p>
+      <div class="step"><div class="step-num">1</div><div>Go to <strong>Feedback Queue</strong> and find the Pending record.</div></div>
+      <div class="step"><div class="step-num">2</div><div>Click <strong>Submit Feedback</strong>, write the coaching notes delivered to the agent, and set the status to <strong>Feedback Delivered</strong>.</div></div>
+      <div class="step"><div class="step-num">3</div><div>If you disagree with the DSAT classification, select <strong>Disputed</strong>, write your dispute notes, and submit. This escalates to admin for review.</div></div>
+      <h4>Status flow</h4>
+      <p><span class="guide-tag badge badge-pending">Pending</span> → <span class="guide-tag badge badge-delivered">Feedback Delivered</span> &nbsp;or&nbsp; <span class="guide-tag badge badge-disputed">Disputed</span> → Admin review → resolved</p>`
+  },
+  {
+    icon: '🔍', title: 'Dispute Review (Admin)',
+    body: `
+      <h4>What is a dispute?</h4>
+      <p>A dispute occurs when a supervisor disagrees with the DSAT classification or believes the agent was not at fault. The record is flagged as <span class="guide-tag badge badge-disputed">Disputed</span> and moved to the admin review queue.</p>
+      <h4>How admins resolve disputes</h4>
+      <div class="step"><div class="step-num">1</div><div>Go to <strong>Feedback Queue</strong>. Disputed records appear at the top in red.</div></div>
+      <div class="step"><div class="step-num">2</div><div>Click <strong>Review Dispute</strong>. You'll see the supervisor's dispute notes and their original feedback.</div></div>
+      <div class="step"><div class="step-num">3</div><div>Choose a decision: <strong>Approve</strong> (mark as Feedback Delivered) or <strong>Return to Pending</strong> (supervisor re-submits).</div></div>
+      <div class="step"><div class="step-num">4</div><div>Optionally edit any record fields directly in the dispute review modal — all changes are saved with a full audit trail.</div></div>
+      <div class="step"><div class="step-num">5</div><div>Click <strong>Save Decision</strong>. The record is updated and the dispute is resolved.</div></div>`
+  },
+  {
+    icon: '✏️', title: 'Admin Record Editing & Audit Trail',
+    body: `
+      <h4>Who can edit submitted records?</h4>
+      <p>Only <strong>Admin</strong> users can edit a record after it has been submitted. This is intentional — it ensures accountability and prevents unauthorized changes.</p>
+      <h4>How to edit</h4>
+      <p>Go to <strong>Records</strong>, find the record, and click the blue <strong>Edit</strong> button. All fields are editable including specialist, supervisor, manager, main reason, sub-reason, and all text areas.</p>
+      <h4>Audit trail</h4>
+      <p>Every edit is automatically flagged: the record gets an amber <span class="guide-tag badge badge-edited">✏ Edited</span> badge, and the system records the admin's name, email, and exact timestamp of the change. This is visible in the record detail view and the <strong>Corrections</strong> tab.</p>
+      <h4>Corrections tab</h4>
+      <p>The <strong>Corrections</strong> tab (visible to admins and analysts) shows the overall correction rate, a breakdown by submitter, and each individual edited ticket. Use this to identify if a particular analyst consistently requires corrections.</p>`
+  },
+  {
+    icon: '📈', title: 'Analytics & Trend Reports',
+    body: `
+      <h4>Week-over-Week (WoW)</h4>
+      <p>Compares DSAT volume and composition for the current week vs. the previous week. Use the ◀ Prev / Next ▶ buttons to navigate to past weeks. The change column is color-coded: <span style="color:#EF4444;font-weight:600">▲ red</span> means more DSATs (worse), <span style="color:#10B981;font-weight:600">▼ green</span> means fewer (better).</p>
+      <h4>Month-over-Month (MoM)</h4>
+      <p>Switch to MoM mode and select a month to compare it against the previous month. Useful for leadership reporting and trend identification.</p>
+      <h4>Drill-down</h4>
+      <p>Click any main reason row to expand it and see the breakdown by sub-reason for both periods. Click again to collapse. Sub-reasons with zero records in both periods are hidden automatically.</p>
+      <h4>Filters</h4>
+      <p>All analytics can be filtered by Supervisor and Manager to isolate team-level performance.</p>`
+  },
+  {
+    icon: '🏗️', title: 'Managing the Hierarchy (Admin)',
+    body: `
+      <h4>Why hierarchy matters</h4>
+      <p>The Hierarchy tab stores the agent → supervisor → manager mapping. When a DSAT is submitted, the system looks up the specialist's supervisor automatically and populates those fields — this drives the feedback queue routing and all supervisor-level filtering.</p>
+      <h4>Adding or editing agents</h4>
+      <p>Go to <strong>Admin → Hierarchy</strong>. Click <strong>+ Add Agent</strong> or click <strong>Edit</strong> next to an existing agent. Fill in name, email, role, supervisor, and manager. Changes take effect immediately for new DSAT submissions.</p>
+      <p><strong>Note:</strong> Editing the hierarchy does not retroactively update already-submitted DSATs. If a supervisor assignment was wrong on a historical record, an admin can correct it by editing the record directly in the Records tab.</p>`
+  }
+];
+
+function renderGuide() {
+  const container = document.getElementById('guide-accordion');
+  if (!container) return;
+  container.innerHTML = GUIDE_SECTIONS.map((s, i) => `
+    <div class="guide-section">
+      <div class="guide-section-header${i===0?' open':''}" onclick="toggleGuideSection(${i})">
+        <div class="guide-section-title"><span>${s.icon}</span> ${escHtml(s.title)}</div>
+        <span class="guide-chevron${i===0?' open':''}">▼</span>
+      </div>
+      <div class="guide-section-body${i===0?' open':''}">${s.body}</div>
+    </div>`).join('');
+}
+
+function toggleGuideSection(idx) {
+  const sections = document.querySelectorAll('.guide-section');
+  const header   = sections[idx]?.querySelector('.guide-section-header');
+  const body     = sections[idx]?.querySelector('.guide-section-body');
+  const chevron  = sections[idx]?.querySelector('.guide-chevron');
+  if (!header) return;
+  const isOpen = header.classList.contains('open');
+  header.classList.toggle('open', !isOpen);
+  body.classList.toggle('open', !isOpen);
+  chevron.classList.toggle('open', !isOpen);
+}
+
+// ══ CORRECTIONS ══════════════════════════════════════════════════════════════
+let expandedSubmitters = new Set();
+
+function renderCorrections() {
+  // Populate filter dropdowns on first render
+  const submitters = [...new Set(cachedData.map(r=>r.submittedByName).filter(Boolean))].sort();
+  const editors    = [...new Set(cachedData.filter(r=>r.lastEditedByName).map(r=>r.lastEditedByName).filter(Boolean))].sort();
+  const subSel = document.getElementById('corr-filter-submitter');
+  const edSel  = document.getElementById('corr-filter-editor');
+  if (subSel) {
+    const prev = subSel.value;
+    subSel.innerHTML = '<option value="">All Submitters</option>' +
+      submitters.map(s=>`<option${s===prev?' selected':''}>${escHtml(s)}</option>`).join('');
+  }
+  if (edSel) {
+    const prev = edSel.value;
+    edSel.innerHTML = '<option value="">All Admins</option>' +
+      editors.map(e=>`<option${e===prev?' selected':''}>${escHtml(e)}</option>`).join('');
+  }
+
+  // Apply filters
+  const from      = document.getElementById('corr-filter-from')?.value;
+  const to        = document.getElementById('corr-filter-to')?.value;
+  const submitter = document.getElementById('corr-filter-submitter')?.value;
+  const editor    = document.getElementById('corr-filter-editor')?.value;
+
+  let base = [...cachedData];
+  if (from)      base = base.filter(r => (r.dsatDate||r.submittedAt||'') >= from);
+  if (to)        base = base.filter(r => (r.dsatDate||r.submittedAt||'') <= to);
+  if (submitter) base = base.filter(r => r.submittedByName === submitter);
+  if (editor)    base = base.filter(r => r.lastEditedByName === editor);
+
+  const corrected = base.filter(r => r.editedFlag==='TRUE' || r.editedFlag===true);
+  const ratio     = base.length ? Math.round(corrected.length / base.length * 100) : 0;
+
+  // Unique editors with counts
+  const editorCounts = {};
+  corrected.forEach(r => {
+    const n = r.lastEditedByName || r.lastEditedByEmail || 'Unknown';
+    editorCounts[n] = (editorCounts[n]||0) + 1;
+  });
+  const topEditor = Object.entries(editorCounts).sort((a,b)=>b[1]-a[1])[0];
+
+  // KPI stats
+  document.getElementById('corr-stats').innerHTML = `
+    <div class="stat-card indigo"><div class="stat-label">Total DSATs in Range</div><div class="stat-value">${base.length}</div><div class="stat-sub">Matching filters</div></div>
+    <div class="stat-card amber"><div class="stat-label">Corrected Records</div><div class="stat-value">${corrected.length}</div><div class="stat-sub">Admin-edited submissions</div></div>
+    <div class="stat-card red"><div class="stat-label">Correction Rate</div><div class="stat-value">${ratio}%</div><div class="stat-sub">of total DSATs edited</div></div>
+    <div class="stat-card sky"><div class="stat-label">Admins Who Edited</div><div class="stat-value">${Object.keys(editorCounts).length}</div><div class="stat-sub">${topEditor ? 'Top: '+escHtml(topEditor[0])+' ('+topEditor[1]+')' : 'None yet'}</div></div>`;
+
+  // Group by submitter
+  const bySubmitter = {};
+  base.forEach(r => {
+    const key = r.submittedByName || r.submittedByEmail || 'Unknown';
+    if (!bySubmitter[key]) bySubmitter[key] = { name: key, email: r.submittedByEmail, total: 0, corrected: [], lastCorrected: '' };
+    bySubmitter[key].total++;
+    if (r.editedFlag==='TRUE' || r.editedFlag===true) {
+      bySubmitter[key].corrected.push(r);
+      if (!bySubmitter[key].lastCorrected || r.lastEditedAt > bySubmitter[key].lastCorrected)
+        bySubmitter[key].lastCorrected = r.lastEditedAt;
+    }
+  });
+
+  const rows = Object.values(bySubmitter).sort((a,b) => {
+    const ra = a.total ? a.corrected.length/a.total : 0;
+    const rb = b.total ? b.corrected.length/b.total : 0;
+    return rb - ra; // highest correction rate first
+  });
+
+  // Chart — top 8 submitters by correction rate
+  const chartRows = rows.filter(r=>r.corrected.length>0).slice(0,8);
+  renderChart('corr-chart','bar',
+    chartRows.map(r=>r.name),
+    chartRows.map(r=>Math.round(r.corrected.length/r.total*100)),
+    chartRows.map(()=>'#F59E0B')
+  );
+  // Override chart options for horizontal bar feel
+  if (chartInstances['corr-chart']) {
+    chartInstances['corr-chart'].options.plugins.legend = { display:false };
+    chartInstances['corr-chart'].options.scales = {
+      y:{ ticks:{ font:{size:10} } },
+      x:{ title:{display:true,text:'Correction Rate (%)',font:{size:10}} }
+    };
+    chartInstances['corr-chart'].update();
+  }
+
+  // Expandable table by submitter
+  let html = '';
+  rows.forEach(row => {
+    const rate    = row.total ? Math.round(row.corrected.length / row.total * 100) : 0;
+    const rateColor = rate >= 20 ? '#EF4444' : rate >= 10 ? '#F59E0B' : '#10B981';
+    const isExp   = expandedSubmitters.has(row.name);
+    html += `<tr class="an-main-row${isExp?' an-expanded':''}" data-submitter="${escHtml(row.name)}" style="cursor:${row.corrected.length?'pointer':'default'}">
+      <td><span class="an-expand" style="${row.corrected.length?'':'visibility:hidden'}">${isExp?'▼':'▶'}</span><strong>${escHtml(row.name)}</strong><br><small style="color:#94A3B8">${escHtml(row.email||'')}</small></td>
+      <td>${row.total}</td>
+      <td>${row.corrected.length}</td>
+      <td><span style="font-weight:700;color:${rateColor}">${rate}%</span></td>
+      <td>${row.lastCorrected ? fmtDateTime(row.lastCorrected) : '—'}</td>
+    </tr>`;
+    if (isExp && row.corrected.length) {
+      row.corrected.sort((a,b)=>(b.lastEditedAt||'').localeCompare(a.lastEditedAt||'')).forEach(r => {
+        html += `<tr class="an-sub-row">
+          <td style="padding-left:2.5rem">↳ <strong>#${escHtml(r.ticketId)}</strong> · ${fmtDate(r.dsatDate)}</td>
+          <td colspan="2">${reasonBadge(r.mainReason)}</td>
+          <td>By: <em>${escHtml(r.lastEditedByName||r.lastEditedByEmail||'—')}</em></td>
+          <td>${fmtDateTime(r.lastEditedAt)}&nbsp;<button class="btn btn-secondary btn-sm" style="padding:.2rem .5rem;font-size:.72rem" onclick="openDetail('${r.id}')">View</button></td>
+        </tr>`;
+      });
+    }
+  });
+
+  if (!rows.length) html = '<tr><td colspan="5"><div class="empty-state"><div class="icon">✏️</div><p>No records match your filters.</p></div></td></tr>';
+  document.getElementById('corr-tbody').innerHTML = html;
+
+  // Attach expand/collapse click listeners
+  document.querySelectorAll('#corr-tbody .an-main-row[data-submitter]').forEach(row => {
+    row.addEventListener('click', () => {
+      const name = row.getAttribute('data-submitter');
+      const sub  = bySubmitter[name];
+      if (!sub || !sub.corrected.length) return;
+      if (expandedSubmitters.has(name)) expandedSubmitters.delete(name);
+      else expandedSubmitters.add(name);
+      renderCorrections();
+    });
+  });
+}
+
+function clearCorrFilters() {
+  ['corr-filter-from','corr-filter-to','corr-filter-submitter','corr-filter-editor'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  expandedSubmitters.clear();
+  renderCorrections();
 }
 
 // ══ BOOT ══════════════════════════════════════════════════════════════════════
