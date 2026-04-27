@@ -288,6 +288,30 @@ tr:hover td{background:#FAFAFA}
       </div>
       <button class="btn btn-secondary btn-sm" onclick="apiFetch().then(d=>{cachedData=d;renderDashboard(d)})">↺ Refresh</button>
     </div>
+    <!-- Dashboard filters -->
+    <div class="card" style="padding:1rem 1.5rem;margin-bottom:1.25rem">
+      <div style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end">
+        <div class="form-group" style="min-width:160px;margin:0">
+          <label style="font-size:.75rem">Month</label>
+          <input type="month" id="dash-filter-month" onchange="applyDashFilters()" style="padding:.45rem .75rem">
+        </div>
+        <div class="form-group" style="min-width:170px;margin:0">
+          <label style="font-size:.75rem">Supervisor</label>
+          <select id="dash-filter-supervisor" onchange="applyDashFilters()">
+            <option value="">All Supervisors</option>
+          </select>
+        </div>
+        <div class="form-group" style="min-width:170px;margin:0">
+          <label style="font-size:.75rem">Manager</label>
+          <select id="dash-filter-manager" onchange="applyDashFilters()">
+            <option value="">All Managers</option>
+          </select>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="clearDashFilters()">✕ Clear</button>
+        <span id="dash-filter-badge" style="font-size:.78rem;color:#4F46E5;font-weight:600;align-self:flex-end;padding-bottom:.1rem"></span>
+      </div>
+    </div>
+
     <div class="stats-grid" id="dash-stats"></div>
     <div class="charts-grid">
       <div class="chart-card">
@@ -1354,10 +1378,39 @@ function renderChart(canvasId, type, labels, dataArr, colors) {
   });
 }
 
+// ══ DASHBOARD FILTERS ════════════════════════════════════════════════════════
+function applyDashFilters() {
+  const month = document.getElementById('dash-filter-month')?.value;
+  const sup   = document.getElementById('dash-filter-supervisor')?.value;
+  const mgr   = document.getElementById('dash-filter-manager')?.value;
+  let filtered = [...cachedData];
+  if (month)  filtered = filtered.filter(r => (r.dsatDate||r.submittedAt||'').slice(0,7) === month);
+  if (sup)    filtered = filtered.filter(r => r.supervisorName === sup);
+  if (mgr)    filtered = filtered.filter(r => r.managerName    === mgr);
+  const active = [month, sup, mgr].filter(Boolean).length;
+  const badge  = document.getElementById('dash-filter-badge');
+  if (badge) badge.textContent = active
+    ? `${active} filter${active>1?'s':''} active — ${filtered.length} record${filtered.length!==1?'s':''}`
+    : '';
+  renderDashboard(filtered);
+}
+
+function clearDashFilters() {
+  ['dash-filter-month','dash-filter-supervisor','dash-filter-manager'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  const badge = document.getElementById('dash-filter-badge');
+  if (badge) badge.textContent = '';
+  renderDashboard(cachedData);
+}
+
 // ══ RECORDS ═══════════════════════════════════════════════════════════════════
 function renderRecords(data) {
-  const filtered = applyCurrentFilters(data);
-  document.getElementById('records-count-label').textContent = `${filtered.length} record${filtered.length!==1?'s':''} found`;
+  const filtered    = applyCurrentFilters(data);
+  const editedCount = filtered.filter(r => r.editedFlag==='TRUE' || r.editedFlag===true).length;
+  const corrRatio   = filtered.length ? Math.round(editedCount / filtered.length * 100) : 0;
+  document.getElementById('records-count-label').textContent =
+    `${filtered.length} record${filtered.length!==1?'s':''} found · ✏ Corrections ratio: ${corrRatio}% (${editedCount} edited)`;
   const tbody = document.getElementById('records-tbody');
   if (!filtered.length) {
     tbody.innerHTML='<tr><td colspan="11"><div class="empty-state"><div class="icon">🔍</div><p>No records match your filters.</p></div></td></tr>';
@@ -1418,6 +1471,17 @@ function buildSupervisorFilter() {
   if (anSup) anSup.innerHTML = '<option value="">All Supervisors</option>' + sups.map(s=>`<option>${escHtml(s)}</option>`).join('');
   const anMgr = document.getElementById('analytics-manager');
   if (anMgr) anMgr.innerHTML = '<option value="">All Managers</option>'    + mgrs.map(m=>`<option>${escHtml(m)}</option>`).join('');
+  // Dashboard filter dropdowns
+  const dashSup = document.getElementById('dash-filter-supervisor');
+  if (dashSup) {
+    const prev = dashSup.value;
+    dashSup.innerHTML = '<option value="">All Supervisors</option>' + sups.map(s=>`<option${s===prev?' selected':''}>${escHtml(s)}</option>`).join('');
+  }
+  const dashMgr = document.getElementById('dash-filter-manager');
+  if (dashMgr) {
+    const prev = dashMgr.value;
+    dashMgr.innerHTML = '<option value="">All Managers</option>' + mgrs.map(m=>`<option${m===prev?' selected':''}>${escHtml(m)}</option>`).join('');
+  }
 }
 
 function buildAnalyticsFilters() {
@@ -1497,6 +1561,10 @@ function openEditModal(id) {
       <div class="form-group"><label>DSAT Date</label><input type="date" id="edit-dsat-date" value="${escHtml(r.dsatDate)}"></div>
       <div class="form-group"><label>Ticket ID</label><input id="edit-ticket-id" value="${escHtml(r.ticketId)}"></div>
       <div class="form-group"><label>Specialist Name</label><input id="edit-specialist-name" value="${escHtml(r.specialistName)}"></div>
+      <div class="form-group"><label>Specialist Email</label><input type="email" id="edit-specialist-email" value="${escHtml(r.specialistEmail)}"></div>
+      <div class="form-group"><label>Supervisor Name</label><input id="edit-supervisor-name" value="${escHtml(r.supervisorName)}"></div>
+      <div class="form-group"><label>Supervisor Email</label><input type="email" id="edit-supervisor-email" value="${escHtml(r.supervisorEmail)}"></div>
+      <div class="form-group"><label>Manager Name</label><input id="edit-manager-name" value="${escHtml(r.managerName)}"></div>
       <div class="form-group">
         <label>Main Reason</label>
         <select id="edit-main-reason" onchange="updateEditSubReasons()">
@@ -1539,19 +1607,23 @@ function updateEditSubReasons() {
 
 async function saveEditRecord() {
   const record = {
-    id:                      document.getElementById('edit-id').value,
-    analysisDate:            document.getElementById('edit-analysis-date').value,
-    dsatDate:                document.getElementById('edit-dsat-date').value,
-    ticketId:                document.getElementById('edit-ticket-id').value,
-    specialistName:          document.getElementById('edit-specialist-name').value,
-    mainReason:              document.getElementById('edit-main-reason').value,
-    subReason:               document.getElementById('edit-sub-reason').value,
-    isPreventable:           document.getElementById('edit-preventable').value,
-    issueResolved:           document.getElementById('edit-resolved').value,
-    correctProcessFollowed:  document.getElementById('edit-process').value,
-    supportingDetails:       document.getElementById('edit-supporting').value,
-    resolutionProvided:      document.getElementById('edit-resolution').value,
-    improvementOpportunities:document.getElementById('edit-improvement').value
+    id:                       document.getElementById('edit-id').value,
+    analysisDate:             document.getElementById('edit-analysis-date').value,
+    dsatDate:                 document.getElementById('edit-dsat-date').value,
+    ticketId:                 document.getElementById('edit-ticket-id').value,
+    specialistName:           document.getElementById('edit-specialist-name').value,
+    specialistEmail:          document.getElementById('edit-specialist-email').value,
+    supervisorName:           document.getElementById('edit-supervisor-name').value,
+    supervisorEmail:          document.getElementById('edit-supervisor-email').value,
+    managerName:              document.getElementById('edit-manager-name').value,
+    mainReason:               document.getElementById('edit-main-reason').value,
+    subReason:                document.getElementById('edit-sub-reason').value,
+    isPreventable:            document.getElementById('edit-preventable').value,
+    issueResolved:            document.getElementById('edit-resolved').value,
+    correctProcessFollowed:   document.getElementById('edit-process').value,
+    supportingDetails:        document.getElementById('edit-supporting').value,
+    resolutionProvided:       document.getElementById('edit-resolution').value,
+    improvementOpportunities: document.getElementById('edit-improvement').value
   };
   try {
     await apiPost({action:'updateDSAT', record});
@@ -1678,13 +1750,15 @@ function openDisputeReview(id) {
   if (!r) return;
   document.getElementById('detail-modal-title').textContent = `🔍 Review Dispute — Ticket #${r.ticketId}`;
   document.getElementById('detail-modal-body').innerHTML = `
-    <div style="background:#FEE2E2;border-radius:.5rem;padding:.85rem;margin-bottom:1rem;font-size:.85rem">
+    <!-- Dispute context -->
+    <div style="background:#FEE2E2;border-radius:.5rem;padding:.85rem;margin-bottom:.75rem;font-size:.85rem">
       <strong>Dispute Notes from Supervisor:</strong><br>${escHtml(r.disputeNotes||'No notes provided')}
     </div>
-    <div style="background:#FEF3C7;border-radius:.5rem;padding:.85rem;margin-bottom:1rem;font-size:.85rem">
+    <div style="background:#FEF3C7;border-radius:.5rem;padding:.85rem;margin-bottom:1.25rem;font-size:.85rem">
       <strong>Supervisor Feedback (as submitted):</strong><br>${escHtml(r.supervisorFeedback||'—')}
     </div>
     <input type="hidden" id="dispute-id" value="${r.id}">
+    <!-- Admin decision -->
     <div class="form-group" style="margin-bottom:1rem">
       <label>Admin Decision — Set New Status</label>
       <select id="dispute-new-status">
@@ -1692,9 +1766,52 @@ function openDisputeReview(id) {
         <option value="Pending">Return to Pending (supervisor re-submit)</option>
       </select>
     </div>
-    <div class="form-group">
-      <label>Admin Notes (optional — will be saved as supervisor feedback)</label>
+    <div class="form-group" style="margin-bottom:1.5rem">
+      <label>Admin Feedback / Notes (will replace supervisor feedback text)</label>
       <textarea id="dispute-admin-feedback" placeholder="Add admin review notes…">${escHtml(r.supervisorFeedback||'')}</textarea>
+    </div>
+    <!-- Full record editing section -->
+    <div style="border-top:2px solid #E2E8F0;padding-top:1.25rem">
+      <div style="font-size:.78rem;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.05em;margin-bottom:1rem">
+        📝 Edit Record Fields <span style="font-weight:400;font-size:.75rem">(optional — changes will be saved with audit trail)</span>
+      </div>
+      <div class="form-grid">
+        <div class="form-group"><label>Analysis Date</label><input type="date" id="disp-analysis-date" value="${escHtml(r.analysisDate)}"></div>
+        <div class="form-group"><label>DSAT Date</label><input type="date" id="disp-dsat-date" value="${escHtml(r.dsatDate)}"></div>
+        <div class="form-group"><label>Ticket ID</label><input id="disp-ticket-id" value="${escHtml(r.ticketId)}"></div>
+        <div class="form-group"><label>Specialist Name</label><input id="disp-specialist-name" value="${escHtml(r.specialistName)}"></div>
+        <div class="form-group"><label>Specialist Email</label><input type="email" id="disp-specialist-email" value="${escHtml(r.specialistEmail)}"></div>
+        <div class="form-group"><label>Supervisor Name</label><input id="disp-supervisor-name" value="${escHtml(r.supervisorName)}"></div>
+        <div class="form-group"><label>Supervisor Email</label><input type="email" id="disp-supervisor-email" value="${escHtml(r.supervisorEmail)}"></div>
+        <div class="form-group"><label>Manager Name</label><input id="disp-manager-name" value="${escHtml(r.managerName)}"></div>
+        <div class="form-group">
+          <label>Main Reason</label>
+          <select id="disp-main-reason" onchange="updateDispSubReasons()">
+            ${Object.keys(SUB_REASONS).map(k=>`<option${k===r.mainReason?' selected':''}>${escHtml(k)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Sub-Reason</label>
+          <select id="disp-sub-reason">
+            ${(SUB_REASONS[r.mainReason]||[]).map(s=>`<option${s===r.subReason?' selected':''}>${escHtml(s)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Preventable?</label>
+          <select id="disp-preventable"><option${r.isPreventable==='YES'?' selected':''}>YES</option><option${r.isPreventable==='NO'?' selected':''}>NO</option></select>
+        </div>
+        <div class="form-group">
+          <label>Issue Resolved?</label>
+          <select id="disp-resolved"><option${r.issueResolved==='YES'?' selected':''}>YES</option><option${r.issueResolved==='NO'?' selected':''}>NO</option></select>
+        </div>
+        <div class="form-group">
+          <label>Correct Process?</label>
+          <select id="disp-process"><option${r.correctProcessFollowed==='YES'?' selected':''}>YES</option><option${r.correctProcessFollowed==='NO'?' selected':''}>NO</option></select>
+        </div>
+        <div class="form-group full"><label>Supporting Details</label><textarea id="disp-supporting">${escHtml(r.supportingDetails)}</textarea></div>
+        <div class="form-group full"><label>Resolution Provided</label><textarea id="disp-resolution">${escHtml(r.resolutionProvided)}</textarea></div>
+        <div class="form-group full"><label>Improvement Opportunities</label><textarea id="disp-improvement">${escHtml(r.improvementOpportunities)}</textarea></div>
+      </div>
     </div>`;
   document.getElementById('detail-modal-footer').innerHTML = `
     <button class="btn btn-secondary" onclick="closeModal('detail-modal')">Cancel</button>
@@ -1702,12 +1819,37 @@ function openDisputeReview(id) {
   openModal('detail-modal');
 }
 
+function updateDispSubReasons() {
+  const main = document.getElementById('disp-main-reason').value;
+  const sub  = document.getElementById('disp-sub-reason');
+  if (sub) sub.innerHTML = (SUB_REASONS[main]||[]).map(s=>`<option>${escHtml(s)}</option>`).join('');
+}
+
 async function saveDisputeReview() {
   const id        = document.getElementById('dispute-id').value;
   const newStatus = document.getElementById('dispute-new-status').value;
   const feedback  = document.getElementById('dispute-admin-feedback').value;
+  const record = {
+    supervisorFeedback:       feedback,
+    analysisDate:             document.getElementById('disp-analysis-date')?.value    || '',
+    dsatDate:                 document.getElementById('disp-dsat-date')?.value        || '',
+    ticketId:                 document.getElementById('disp-ticket-id')?.value        || '',
+    specialistName:           document.getElementById('disp-specialist-name')?.value  || '',
+    specialistEmail:          document.getElementById('disp-specialist-email')?.value || '',
+    supervisorName:           document.getElementById('disp-supervisor-name')?.value  || '',
+    supervisorEmail:          document.getElementById('disp-supervisor-email')?.value || '',
+    managerName:              document.getElementById('disp-manager-name')?.value     || '',
+    mainReason:               document.getElementById('disp-main-reason')?.value      || '',
+    subReason:                document.getElementById('disp-sub-reason')?.value       || '',
+    isPreventable:            document.getElementById('disp-preventable')?.value      || '',
+    issueResolved:            document.getElementById('disp-resolved')?.value         || '',
+    correctProcessFollowed:   document.getElementById('disp-process')?.value          || '',
+    supportingDetails:        document.getElementById('disp-supporting')?.value       || '',
+    resolutionProvided:       document.getElementById('disp-resolution')?.value       || '',
+    improvementOpportunities: document.getElementById('disp-improvement')?.value      || ''
+  };
   try {
-    await apiPost({action:'disputeReview', dsatId:id, newStatus, record:{supervisorFeedback:feedback}});
+    await apiPost({action:'disputeReview', dsatId:id, newStatus, record});
     showToast('✅ Dispute resolved.');
     closeModal('detail-modal');
     const data = await apiFetch();
