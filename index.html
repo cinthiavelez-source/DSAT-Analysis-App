@@ -191,6 +191,21 @@ tr:hover td{background:#FAFAFA}
 /* ── NOTIFICATION DOT ── */
 .notif-dot{background:#EF4444;color:#fff;border-radius:99px;font-size:.65rem;font-weight:800;padding:.1rem .4rem;margin-left:.3rem;line-height:1.5}
 
+/* ── ANALYTICS TABLE ── */
+.an-main-row{background:#FAFAFA;cursor:pointer;user-select:none}
+.an-main-row:hover{background:#F1F5F9}
+.an-main-row.an-expanded{background:#EDE9FE}
+.an-sub-row td{border-left:3px solid #4F46E5;background:#FAFAFF;font-size:.82rem}
+.an-total-row{background:#F8FAFC;border-top:2px solid #E2E8F0}
+.an-total-row td{font-weight:700}
+.an-expand{font-size:.68rem;color:#4F46E5;margin-right:.4rem;transition:transform .15s}
+.an-mode-btn{border:1.5px solid #E2E8F0;padding:.5rem 1rem;font-size:.85rem;font-weight:600;cursor:pointer;background:#F1F5F9;color:#374151;transition:all .15s}
+.an-mode-btn:first-child{border-radius:.5rem 0 0 .5rem;border-right:none}
+.an-mode-btn:last-child{border-radius:0 .5rem .5rem 0}
+.an-mode-btn.active{background:#4F46E5;color:#fff;border-color:#4F46E5}
+.an-period-nav{display:flex;align-items:center;gap:.5rem}
+.an-period-label{font-size:.85rem;font-weight:600;min-width:200px;text-align:center;color:#1E293B}
+
 /* ── RESPONSIVE ── */
 @media(max-width:768px){
   .navbar{padding:0 1rem;min-height:56px}
@@ -244,6 +259,9 @@ tr:hover td{background:#FAFAFA}
     <button class="nav-btn" data-page="queue" onclick="navTo('queue')" id="nav-queue" style="display:none">
       <span>🔔</span><span class="nav-label">Feedback Queue</span>
       <span class="notif-dot" id="queue-badge" style="display:none">0</span>
+    </button>
+    <button class="nav-btn" data-page="analytics" onclick="navTo('analytics')" id="nav-analytics">
+      <span>📈</span><span class="nav-label">Analytics</span>
     </button>
     <button class="nav-btn" data-page="admin" onclick="navTo('admin')" id="nav-admin" style="display:none">
       <span>⚙️</span><span class="nav-label">Admin</span>
@@ -348,25 +366,26 @@ tr:hover td{background:#FAFAFA}
             <input type="text" id="f-manager-name" readonly placeholder="Auto-populated from hierarchy" style="background:#F8FAFC;color:#64748B">
           </div>
 
-          <!-- 5a. Main Reason -->
+          <!-- 5a. Main Reason (searchable) -->
           <div class="form-group">
-            <label for="f-main-reason">5. DSAT Responsibility — Main Reason *</label>
-            <select id="f-main-reason" required onchange="updateSubReasons()">
-              <option value="">Select main reason…</option>
-              <option>Agent - Related</option>
-              <option>Customer Expectations</option>
-              <option>Process - Related</option>
-              <option>System - Related</option>
-              <option>Product - Related</option>
-            </select>
+            <label>5. DSAT Responsibility — Main Reason *</label>
+            <div class="specialist-wrap" id="main-reason-wrap">
+              <input type="text" id="f-main-reason-search" placeholder="Type to search or select reason…"
+                     autocomplete="off" oninput="filterMainReason(this.value)" onfocus="openMainReasonDropdown()">
+              <input type="hidden" id="f-main-reason">
+              <div class="specialist-dropdown" id="main-reason-dropdown"></div>
+            </div>
           </div>
 
-          <!-- 5b. Sub Reason -->
+          <!-- 5b. Sub-Reason (searchable, enabled after main reason picked) -->
           <div class="form-group">
-            <label for="f-sub-reason">Sub-Reason *</label>
-            <select id="f-sub-reason" required>
-              <option value="">Select main reason first…</option>
-            </select>
+            <label>Sub-Reason *</label>
+            <div class="specialist-wrap" id="sub-reason-wrap">
+              <input type="text" id="f-sub-reason-search" placeholder="Select main reason first…"
+                     autocomplete="off" oninput="filterSubReason(this.value)" onfocus="openSubReasonDropdown()" disabled>
+              <input type="hidden" id="f-sub-reason">
+              <div class="specialist-dropdown" id="sub-reason-dropdown"></div>
+            </div>
           </div>
 
           <!-- 6. Preventable -->
@@ -531,6 +550,89 @@ tr:hover td{background:#FAFAFA}
           <thead><tr><th>Agent Name</th><th>Email</th><th>Role</th><th>Supervisor</th><th>Manager</th><th>Tenure</th><th>Actions</th></tr></thead>
           <tbody id="hier-tbody"></tbody>
         </table></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── ANALYTICS ─────────────────────────────────────────────────────────── -->
+  <div class="page" id="page-analytics">
+    <div class="page-header">
+      <div>
+        <div class="page-title">📈 Trends Analytics</div>
+        <div class="page-sub">Week-over-Week and Month-over-Month DSAT breakdown — click a main reason to expand sub-reasons</div>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="card">
+      <div style="display:flex;flex-wrap:wrap;gap:1rem;align-items:flex-end">
+        <!-- WoW / MoM toggle -->
+        <div class="form-group" style="min-width:auto">
+          <label>View Mode</label>
+          <div>
+            <button class="an-mode-btn active" id="an-mode-wow" onclick="setAnalyticsMode('WoW')">Week over Week</button>
+            <button class="an-mode-btn"        id="an-mode-mom" onclick="setAnalyticsMode('MoM')">Month over Month</button>
+          </div>
+        </div>
+
+        <!-- Week navigation -->
+        <div id="an-week-controls" style="display:flex;align-items:flex-end">
+          <div class="form-group" style="margin:0">
+            <label>Week</label>
+            <div class="an-period-nav">
+              <button class="btn btn-secondary btn-sm" onclick="analyticsWeekOff--;renderAnalytics()">◀ Prev</button>
+              <span id="analytics-period-label" class="an-period-label">Current Week</span>
+              <button class="btn btn-secondary btn-sm" onclick="analyticsWeekOff++;renderAnalytics()">Next ▶</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Month picker -->
+        <div id="an-month-controls" style="display:none;align-items:flex-end">
+          <div class="form-group" style="margin:0">
+            <label>Month</label>
+            <input type="month" id="analytics-month" onchange="analyticsMonth=this.value;renderAnalytics()" style="width:180px">
+          </div>
+        </div>
+
+        <!-- Supervisor -->
+        <div class="form-group" style="min-width:180px;margin:0">
+          <label>Supervisor</label>
+          <select id="analytics-supervisor" onchange="renderAnalytics()">
+            <option value="">All Supervisors</option>
+          </select>
+        </div>
+
+        <!-- Manager -->
+        <div class="form-group" style="min-width:180px;margin:0">
+          <label>Manager</label>
+          <select id="analytics-manager" onchange="renderAnalytics()">
+            <option value="">All Managers</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- KPI summary -->
+    <div class="stats-grid" id="an-stats"></div>
+
+    <!-- Trend table -->
+    <div class="card">
+      <div class="card-title">📊 DSAT by Reason — <small style="font-weight:400;color:#64748B">Click any main reason row to expand / collapse its sub-reasons</small></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="min-width:220px">Reason</th>
+              <th id="an-curr-header">This Period</th>
+              <th id="an-prev-header">Previous Period</th>
+              <th>Change ↕</th>
+              <th>Preventable %</th>
+              <th>Resolved %</th>
+            </tr>
+          </thead>
+          <tbody id="an-tbody"></tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -767,7 +869,7 @@ function normalizeRow(r) {
 }
 
 // ══ NAVIGATION ════════════════════════════════════════════════════════════════
-const PAGES = ['dashboard','submit','records','queue','admin'];
+const PAGES = ['dashboard','submit','records','queue','analytics','admin'];
 
 function navTo(page) {
   currentPage = page;
@@ -778,10 +880,11 @@ function navTo(page) {
   document.querySelectorAll('.nav-btn[data-page]').forEach(b =>
     b.classList.toggle('active', b.dataset.page===page)
   );
-  if (page==='dashboard') renderDashboard(cachedData);
-  else if (page==='records') renderRecords(cachedData);
-  else if (page==='queue')   renderQueue(cachedData);
-  else if (page==='admin')   { switchAdminTab('roles'); loadRoles(); renderHierarchyTable(); }
+  if (page==='dashboard')  renderDashboard(cachedData);
+  else if (page==='records')   renderRecords(cachedData);
+  else if (page==='queue')     renderQueue(cachedData);
+  else if (page==='analytics') { buildAnalyticsFilters(); renderAnalytics(); }
+  else if (page==='admin')     { switchAdminTab('roles'); loadRoles(); renderHierarchyTable(); }
 }
 
 // ══ ROLE UI ═══════════════════════════════════════════════════════════════════
@@ -872,18 +975,252 @@ function openSpecialistDropdown() {
 }
 
 document.addEventListener('click', e => {
-  if (!e.target.closest('.specialist-wrap'))
-    document.getElementById('specialist-dropdown').classList.remove('open');
+  if (!e.target.closest('.specialist-wrap')) {
+    document.getElementById('specialist-dropdown')?.classList.remove('open');
+    document.getElementById('main-reason-dropdown')?.classList.remove('open');
+    document.getElementById('sub-reason-dropdown')?.classList.remove('open');
+  }
 });
 
-// ══ SUB-REASONS ═══════════════════════════════════════════════════════════════
-function updateSubReasons() {
-  const main = document.getElementById('f-main-reason').value;
-  const sub  = document.getElementById('f-sub-reason');
-  const opts = SUB_REASONS[main] || [];
-  sub.innerHTML = opts.length
-    ? '<option value="">Select sub-reason…</option>' + opts.map(o=>`<option>${escHtml(o)}</option>`).join('')
-    : '<option value="">Select main reason first…</option>';
+// ══ SEARCHABLE MAIN REASON ════════════════════════════════════════════════════
+let _reasonMatches    = [];
+let _subReasonMatches = [];
+
+function filterMainReason(query) {
+  const dd = document.getElementById('main-reason-dropdown');
+  const q  = query.toLowerCase();
+  _reasonMatches = Object.keys(SUB_REASONS).filter(r => !q || r.toLowerCase().includes(q));
+  if (!_reasonMatches.length) { dd.classList.remove('open'); return; }
+  dd.innerHTML = _reasonMatches.map((r, i) =>
+    `<div class="spec-option" data-idx="${i}">${reasonBadge(r)}</div>`
+  ).join('');
+  dd.querySelectorAll('.spec-option[data-idx]').forEach(el => {
+    el.addEventListener('mousedown', e => {
+      e.preventDefault();
+      selectMainReason(_reasonMatches[parseInt(el.getAttribute('data-idx'), 10)]);
+    });
+  });
+  dd.classList.add('open');
+}
+
+function openMainReasonDropdown() {
+  filterMainReason(document.getElementById('f-main-reason-search').value);
+}
+
+function selectMainReason(reason) {
+  document.getElementById('f-main-reason-search').value = reason;
+  document.getElementById('f-main-reason').value        = reason;
+  document.getElementById('main-reason-dropdown').classList.remove('open');
+  // Enable sub-reason
+  const subInp = document.getElementById('f-sub-reason-search');
+  subInp.disabled    = false;
+  subInp.placeholder = 'Type to search sub-reason…';
+  subInp.value       = '';
+  document.getElementById('f-sub-reason').value = '';
+  _subReasonMatches  = [...(SUB_REASONS[reason] || [])];
+  renderSubReasonDropdown();
+}
+
+// ══ SEARCHABLE SUB-REASON ═════════════════════════════════════════════════════
+function filterSubReason(query) {
+  const mainReason = document.getElementById('f-main-reason').value;
+  if (!mainReason) return;
+  const q = query.toLowerCase();
+  _subReasonMatches = (SUB_REASONS[mainReason] || []).filter(s => !q || s.toLowerCase().includes(q));
+  renderSubReasonDropdown();
+}
+
+function openSubReasonDropdown() {
+  const mainReason = document.getElementById('f-main-reason').value;
+  if (!mainReason) { showToast('Please select a main reason first.', '#F59E0B'); return; }
+  filterSubReason(document.getElementById('f-sub-reason-search').value);
+}
+
+function renderSubReasonDropdown() {
+  const dd = document.getElementById('sub-reason-dropdown');
+  if (!_subReasonMatches.length) { dd.classList.remove('open'); return; }
+  dd.innerHTML = _subReasonMatches.map((s, i) =>
+    `<div class="spec-option" data-idx="${i}">${escHtml(s)}</div>`
+  ).join('');
+  dd.querySelectorAll('.spec-option[data-idx]').forEach(el => {
+    el.addEventListener('mousedown', e => {
+      e.preventDefault();
+      const sub = _subReasonMatches[parseInt(el.getAttribute('data-idx'), 10)];
+      document.getElementById('f-sub-reason-search').value = sub;
+      document.getElementById('f-sub-reason').value        = sub;
+      dd.classList.remove('open');
+    });
+  });
+  dd.classList.add('open');
+}
+
+// ══ ANALYTICS ════════════════════════════════════════════════════════════════
+let analyticsMode    = 'WoW';
+let analyticsWeekOff = 0;    // 0 = current week, -1 = prev week, etc.
+let analyticsMonth   = '';   // YYYY-MM
+let expandedReasons  = new Set();
+
+function getWeekBounds(offset) {
+  const now = new Date();
+  const dow = now.getDay() || 7;                  // Mon=1 … Sun=7
+  const mon = new Date(now);
+  mon.setDate(now.getDate() - dow + 1 + offset * 7);
+  mon.setHours(0, 0, 0, 0);
+  const sun = new Date(mon);
+  sun.setDate(mon.getDate() + 6);
+  sun.setHours(23, 59, 59, 999);
+  return { start: mon, end: sun };
+}
+
+function getMonthBounds(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  return { start: new Date(y, m - 1, 1), end: new Date(y, m, 0, 23, 59, 59) };
+}
+
+function getPrevMonth(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+}
+
+function filterByPeriod(data, start, end) {
+  return data.filter(r => {
+    const d = new Date(r.dsatDate || r.submittedAt);
+    return !isNaN(d) && d >= start && d <= end;
+  });
+}
+
+function calcMetrics(rows) {
+  return {
+    count:       rows.length,
+    preventable: rows.filter(r => r.isPreventable === 'YES').length,
+    resolved:    rows.filter(r => r.issueResolved  === 'YES').length
+  };
+}
+
+function shortDate(d) {
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function trendText(curr, prev) {
+  if (!prev && !curr) return 'No data';
+  const delta = curr - prev;
+  const pct   = prev ? Math.round(Math.abs(delta) / prev * 100) : 100;
+  if (delta > 0) return `▲ +${pct}% vs prev`;
+  if (delta < 0) return `▼ ${pct}% vs prev`;
+  return '→ No change';
+}
+
+function trendCell(curr, prev) {
+  if (!prev && !curr) return '<span style="color:#94A3B8">—</span>';
+  const delta = curr - prev;
+  const pct   = prev === 0 ? '∞' : Math.round(Math.abs(delta) / prev * 100) + '%';
+  if (delta > 0) return `<span style="color:#EF4444;font-weight:600">▲ +${delta} (${pct})</span>`;
+  if (delta < 0) return `<span style="color:#10B981;font-weight:600">▼ ${delta} (${pct})</span>`;
+  return `<span style="color:#94A3B8">→ 0 (0%)</span>`;
+}
+
+function setAnalyticsMode(mode) {
+  analyticsMode = mode;
+  document.getElementById('an-mode-wow').classList.toggle('active', mode === 'WoW');
+  document.getElementById('an-mode-mom').classList.toggle('active', mode === 'MoM');
+  document.getElementById('an-week-controls').style.display  = mode === 'WoW' ? 'flex' : 'none';
+  document.getElementById('an-month-controls').style.display = mode === 'MoM' ? 'flex' : 'none';
+  renderAnalytics();
+}
+
+function renderAnalytics() {
+  const supervisor = document.getElementById('analytics-supervisor')?.value || '';
+  const manager    = document.getElementById('analytics-manager')?.value    || '';
+  let   base       = [...cachedData];
+  if (supervisor) base = base.filter(r => r.supervisorName === supervisor);
+  if (manager)    base = base.filter(r => r.managerName    === manager);
+
+  let currData, prevData, currLabel, prevLabel;
+
+  if (analyticsMode === 'WoW') {
+    const cw  = getWeekBounds(analyticsWeekOff);
+    const pw  = getWeekBounds(analyticsWeekOff - 1);
+    currData  = filterByPeriod(base, cw.start, cw.end);
+    prevData  = filterByPeriod(base, pw.start, pw.end);
+    currLabel = `${shortDate(cw.start)} – ${shortDate(cw.end)}`;
+    prevLabel = `${shortDate(pw.start)} – ${shortDate(pw.end)}`;
+    document.getElementById('analytics-period-label').textContent = `Week: ${currLabel}`;
+  } else {
+    const ym   = analyticsMonth || new Date().toISOString().slice(0, 7);
+    const pym  = getPrevMonth(ym);
+    const cm   = getMonthBounds(ym),  pm = getMonthBounds(pym);
+    currData   = filterByPeriod(base, cm.start, cm.end);
+    prevData   = filterByPeriod(base, pm.start, pm.end);
+    const [y, m]    = ym.split('-').map(Number);
+    const [py, pm2] = pym.split('-').map(Number);
+    currLabel  = new Date(y,  m  - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+    prevLabel  = new Date(py, pm2 - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+  }
+
+  document.getElementById('an-curr-header').textContent = currLabel;
+  document.getElementById('an-prev-header').textContent = prevLabel;
+
+  const totalCurr = calcMetrics(currData);
+  const totalPrev = calcMetrics(prevData);
+
+  // KPI summary
+  document.getElementById('an-stats').innerHTML = `
+    <div class="stat-card indigo"><div class="stat-label">DSATs — This Period</div><div class="stat-value">${totalCurr.count}</div><div class="stat-sub">${trendText(totalCurr.count, totalPrev.count)}</div></div>
+    <div class="stat-card purple"><div class="stat-label">DSATs — Previous Period</div><div class="stat-value">${totalPrev.count}</div><div class="stat-sub">Comparison baseline</div></div>
+    <div class="stat-card amber"><div class="stat-label">Preventable This Period</div><div class="stat-value">${totalCurr.preventable}</div><div class="stat-sub">${totalCurr.count ? Math.round(totalCurr.preventable / totalCurr.count * 100) + '%' : '—'} of total</div></div>
+    <div class="stat-card green"><div class="stat-label">Resolved This Period</div><div class="stat-value">${totalCurr.resolved}</div><div class="stat-sub">${totalCurr.count ? Math.round(totalCurr.resolved / totalCurr.count * 100) + '%' : '—'} of total</div></div>`;
+
+  // Breakdown table
+  let html = '';
+  Object.keys(SUB_REASONS).forEach(mainReason => {
+    const c   = calcMetrics(currData.filter(r => r.mainReason === mainReason));
+    const p   = calcMetrics(prevData.filter(r => r.mainReason === mainReason));
+    const exp = expandedReasons.has(mainReason);
+    html += `<tr class="an-main-row${exp ? ' an-expanded' : ''}" data-reason="${escHtml(mainReason)}">
+      <td><span class="an-expand">${exp ? '▼' : '▶'}</span>${reasonBadge(mainReason)}</td>
+      <td><strong>${c.count}</strong></td>
+      <td>${p.count}</td>
+      <td>${trendCell(c.count, p.count)}</td>
+      <td>${c.count ? Math.round(c.preventable / c.count * 100) + '%' : '—'}</td>
+      <td>${c.count ? Math.round(c.resolved    / c.count * 100) + '%' : '—'}</td>
+    </tr>`;
+    if (exp) {
+      SUB_REASONS[mainReason].forEach(sub => {
+        const sc = calcMetrics(currData.filter(r => r.mainReason === mainReason && r.subReason === sub));
+        const sp = calcMetrics(prevData.filter(r => r.mainReason === mainReason && r.subReason === sub));
+        if (sc.count === 0 && sp.count === 0) return; // skip empty sub-reasons
+        html += `<tr class="an-sub-row">
+          <td style="padding-left:2.5rem">↳ ${escHtml(sub)}</td>
+          <td>${sc.count}</td>
+          <td>${sp.count}</td>
+          <td>${trendCell(sc.count, sp.count)}</td>
+          <td>${sc.count ? Math.round(sc.preventable / sc.count * 100) + '%' : '—'}</td>
+          <td>${sc.count ? Math.round(sc.resolved    / sc.count * 100) + '%' : '—'}</td>
+        </tr>`;
+      });
+    }
+  });
+  // Totals
+  html += `<tr class="an-total-row">
+    <td>TOTAL</td>
+    <td>${totalCurr.count}</td>
+    <td>${totalPrev.count}</td>
+    <td>${trendCell(totalCurr.count, totalPrev.count)}</td>
+    <td>${totalCurr.count ? Math.round(totalCurr.preventable / totalCurr.count * 100) + '%' : '—'}</td>
+    <td>${totalCurr.count ? Math.round(totalCurr.resolved    / totalCurr.count * 100) + '%' : '—'}</td>
+  </tr>`;
+
+  document.getElementById('an-tbody').innerHTML = html;
+
+  // Attach expand/collapse click listeners
+  document.querySelectorAll('.an-main-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const reason = row.getAttribute('data-reason');
+      if (expandedReasons.has(reason)) expandedReasons.delete(reason);
+      else expandedReasons.add(reason);
+      renderAnalytics();
+    });
+  });
 }
 
 // ══ SUBMIT DSAT ═══════════════════════════════════════════════════════════════
@@ -891,6 +1228,10 @@ async function submitDSAT(e) {
   e.preventDefault();
   const specName = document.getElementById('f-specialist-name').value;
   if (!specName) { showToast('Please select a specialist from the dropdown.','#EF4444'); return; }
+  const mainReason = document.getElementById('f-main-reason').value;
+  if (!mainReason) { showToast('Please select a main reason.','#EF4444'); return; }
+  const subReason = document.getElementById('f-sub-reason').value;
+  if (!subReason) { showToast('Please select a sub-reason.','#EF4444'); return; }
   const u = getUser();
   const record = {
     analysisDate:           document.getElementById('f-analysis-date').value,
@@ -923,6 +1264,7 @@ async function submitDSAT(e) {
 
 function resetForm() {
   document.getElementById('dsat-form').reset();
+  // Specialist
   document.getElementById('f-specialist-search').value='';
   document.getElementById('f-specialist-name').value='';
   document.getElementById('f-specialist-email').value='';
@@ -930,7 +1272,17 @@ function resetForm() {
   document.getElementById('f-supervisor-name').classList.remove('auto-filled');
   document.getElementById('f-manager-name').value='';
   document.getElementById('f-manager-name').classList.remove('auto-filled');
-  document.getElementById('f-sub-reason').innerHTML='<option value="">Select main reason first…</option>';
+  // Main reason
+  document.getElementById('f-main-reason-search').value='';
+  document.getElementById('f-main-reason').value='';
+  // Sub-reason
+  const subInp = document.getElementById('f-sub-reason-search');
+  subInp.value       = '';
+  subInp.disabled    = true;
+  subInp.placeholder = 'Select main reason first…';
+  document.getElementById('f-sub-reason').value='';
+  // Re-set today's date
+  document.getElementById('f-analysis-date').value = new Date().toISOString().slice(0,10);
 }
 
 // ══ DASHBOARD ═════════════════════════════════════════════════════════════════
@@ -1057,9 +1409,19 @@ function clearFilters()  {
 
 function buildSupervisorFilter() {
   const sups = [...new Set(cachedData.map(r=>r.supervisorName).filter(Boolean))].sort();
-  const sel = document.getElementById('filter-supervisor');
-  if (!sel) return;
-  sel.innerHTML = '<option value="">All Supervisors</option>' + sups.map(s=>`<option>${escHtml(s)}</option>`).join('');
+  const mgrs = [...new Set(cachedData.map(r=>r.managerName).filter(Boolean))].sort();
+  // Records page
+  const recSup = document.getElementById('filter-supervisor');
+  if (recSup) recSup.innerHTML = '<option value="">All Supervisors</option>' + sups.map(s=>`<option>${escHtml(s)}</option>`).join('');
+  // Analytics page (called lazily via buildAnalyticsFilters too)
+  const anSup = document.getElementById('analytics-supervisor');
+  if (anSup) anSup.innerHTML = '<option value="">All Supervisors</option>' + sups.map(s=>`<option>${escHtml(s)}</option>`).join('');
+  const anMgr = document.getElementById('analytics-manager');
+  if (anMgr) anMgr.innerHTML = '<option value="">All Managers</option>'    + mgrs.map(m=>`<option>${escHtml(m)}</option>`).join('');
+}
+
+function buildAnalyticsFilters() {
+  buildSupervisorFilter(); // re-sync dropdowns with latest data
 }
 
 function exportCSV() {
@@ -1553,6 +1915,10 @@ async function initApp() {
   document.getElementById('user-name-nav').textContent = u?.name||'—';
   // Set today's date as default for analysis date
   document.getElementById('f-analysis-date').value = new Date().toISOString().slice(0,10);
+  // Seed analytics month picker to current month
+  analyticsMonth = new Date().toISOString().slice(0,7);
+  const mEl = document.getElementById('analytics-month');
+  if (mEl) mEl.value = analyticsMonth;
   updateRoleUI();
   const data = await apiFetch();
   cachedData = data;
