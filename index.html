@@ -1,0 +1,1555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CookUnity DSAT Tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#F1F5F9;color:#1E293B;min-height:100vh}
+a{color:#4F46E5}
+
+/* ── LAYOUT ── */
+.navbar{background:linear-gradient(135deg,#4F46E5 0%,#7C3AED 100%);padding:0 1.5rem;display:flex;align-items:center;justify-content:space-between;min-height:60px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(79,70,229,.3)}
+.navbar-brand{display:flex;align-items:center;gap:.75rem;color:#fff;font-weight:700;font-size:1.1rem;text-decoration:none}
+.navbar-brand .logo{width:32px;height:32px;background:rgba(255,255,255,.2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.1rem}
+.nav-links{display:flex;gap:.25rem;align-items:center}
+.nav-btn{background:none;border:none;color:rgba(255,255,255,.8);padding:.5rem .9rem;border-radius:.5rem;cursor:pointer;font-size:.875rem;font-weight:500;transition:all .15s;display:flex;align-items:center;gap:.4rem;white-space:nowrap}
+.nav-btn:hover{background:rgba(255,255,255,.15);color:#fff}
+.nav-btn.active{background:rgba(255,255,255,.2);color:#fff;font-weight:600}
+.nav-user{display:flex;align-items:center;gap:.75rem}
+.user-pill{background:rgba(255,255,255,.15);border-radius:2rem;padding:.35rem .9rem;color:#fff;font-size:.8rem;display:flex;align-items:center;gap:.5rem}
+.role-badge{padding:.15rem .5rem;border-radius:99px;font-size:.7rem;font-weight:700;text-transform:uppercase}
+.role-admin{background:#FDE68A;color:#92400E}
+.role-supervisor{background:#BAE6FD;color:#0C4A6E}
+.role-analyst{background:#BBF7D0;color:#14532D}
+.role-viewer{background:#E2E8F0;color:#475569}
+.btn-logout{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:.5rem;padding:.4rem .8rem;cursor:pointer;font-size:.8rem;transition:all .15s}
+.btn-logout:hover{background:rgba(255,255,255,.2)}
+
+.main{padding:1.5rem;max-width:1400px;margin:0 auto}
+.page{display:none}
+.page.active{display:block}
+
+/* ── CARDS ── */
+.card{background:#fff;border-radius:1rem;padding:1.5rem;box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:1.5rem}
+.card-title{font-size:1rem;font-weight:700;color:#1E293B;margin-bottom:1rem;display:flex;align-items:center;gap:.5rem}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1rem;margin-bottom:1.5rem}
+.stat-card{background:#fff;border-radius:.75rem;padding:1.25rem;box-shadow:0 1px 4px rgba(0,0,0,.06);border-left:4px solid transparent;transition:transform .15s}
+.stat-card:hover{transform:translateY(-1px)}
+.stat-card.indigo{border-color:#4F46E5}.stat-card.purple{border-color:#7C3AED}
+.stat-card.green{border-color:#10B981}.stat-card.amber{border-color:#F59E0B}
+.stat-card.red{border-color:#EF4444}.stat-card.sky{border-color:#0EA5E9}
+.stat-label{font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#64748B;margin-bottom:.4rem}
+.stat-value{font-size:2rem;font-weight:800;color:#1E293B;line-height:1}
+.stat-sub{font-size:.75rem;color:#94A3B8;margin-top:.3rem}
+.charts-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:1.25rem;margin-bottom:1.5rem}
+.chart-card{background:#fff;border-radius:1rem;padding:1.25rem;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.chart-title{font-size:.875rem;font-weight:700;color:#1E293B;margin-bottom:1rem}
+.chart-wrap{position:relative;height:260px}
+
+/* ── FORMS ── */
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.25rem}
+.form-group{display:flex;flex-direction:column;gap:.4rem}
+.form-group.full{grid-column:1/-1}
+label{font-size:.8rem;font-weight:600;color:#374151}
+input,select,textarea{border:1.5px solid #E2E8F0;border-radius:.5rem;padding:.6rem .85rem;font-size:.875rem;color:#1E293B;outline:none;width:100%;background:#fff;transition:border-color .15s}
+input:focus,select:focus,textarea:focus{border-color:#4F46E5;box-shadow:0 0 0 3px rgba(79,70,229,.1)}
+textarea{resize:vertical;min-height:90px;font-family:inherit}
+.search-input-wrap{position:relative}
+.search-input-wrap input{padding-left:2.25rem}
+.search-input-wrap .search-icon{position:absolute;left:.75rem;top:50%;transform:translateY(-50%);color:#94A3B8;font-size:.9rem}
+select option:disabled{color:#94A3B8}
+
+/* ── SPECIALIST SEARCH ── */
+.specialist-wrap{position:relative}
+.specialist-dropdown{position:absolute;top:100%;left:0;right:0;background:#fff;border:1.5px solid #E2E8F0;border-top:none;border-radius:0 0 .5rem .5rem;max-height:220px;overflow-y:auto;z-index:50;display:none;box-shadow:0 4px 12px rgba(0,0,0,.1)}
+.specialist-dropdown.open{display:block}
+.spec-option{padding:.6rem .85rem;cursor:pointer;font-size:.85rem;border-bottom:1px solid #F8FAFC;transition:background .1s}
+.spec-option:hover,.spec-option.focused{background:#F1F5F9}
+.spec-meta{font-size:.72rem;color:#94A3B8;margin-top:.1rem}
+.auto-filled{background:#F0FDF4 !important;border-color:#10B981 !important}
+
+/* ── RADIO GROUPS ── */
+.radio-group{display:flex;gap:.75rem;flex-wrap:wrap}
+.radio-option{display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:.875rem;font-weight:500;color:#374151}
+.radio-option input{width:auto}
+
+/* ── BUTTONS ── */
+.btn{border:none;border-radius:.5rem;padding:.65rem 1.25rem;font-size:.875rem;font-weight:600;cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;gap:.5rem}
+.btn-primary{background:#4F46E5;color:#fff}.btn-primary:hover{background:#4338CA}
+.btn-secondary{background:#F1F5F9;color:#374151;border:1.5px solid #E2E8F0}.btn-secondary:hover{background:#E2E8F0}
+.btn-success{background:#10B981;color:#fff}.btn-success:hover{background:#059669}
+.btn-danger{background:#EF4444;color:#fff}.btn-danger:hover{background:#DC2626}
+.btn-warning{background:#F59E0B;color:#fff}.btn-warning:hover{background:#D97706}
+.btn-sm{padding:.4rem .8rem;font-size:.8rem}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* ── TABLES ── */
+.table-wrap{overflow-x:auto;border-radius:.75rem}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th{background:#F8FAFC;font-weight:700;color:#374151;padding:.75rem 1rem;text-align:left;border-bottom:2px solid #E2E8F0;white-space:nowrap;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em}
+td{padding:.7rem 1rem;border-bottom:1px solid #F1F5F9;color:#374151;vertical-align:middle}
+tr:hover td{background:#FAFAFA}
+.tr-edited td:first-child{border-left:3px solid #F59E0B}
+
+/* ── BADGES ── */
+.badge{padding:.2rem .6rem;border-radius:99px;font-size:.72rem;font-weight:700;white-space:nowrap;display:inline-flex;align-items:center;gap:.3rem}
+.badge-pending{background:#FEF3C7;color:#92400E}
+.badge-delivered{background:#D1FAE5;color:#065F46}
+.badge-disputed{background:#FEE2E2;color:#991B1B}
+.badge-na{background:#F1F5F9;color:#64748B}
+.badge-yes{background:#D1FAE5;color:#065F46}
+.badge-no{background:#FEE2E2;color:#991B1B}
+.badge-edited{background:#FEF3C7;color:#92400E;font-size:.68rem}
+.badge-agent{background:#EDE9FE;color:#5B21B6}
+.badge-process{background:#DBEAFE;color:#1E40AF}
+.badge-system{background:#FEF3C7;color:#92400E}
+.badge-product{background:#D1FAE5;color:#065F46}
+.badge-customer{background:#FCE7F3;color:#9D174D}
+
+/* ── FILTERS ── */
+.filters-row{display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end;margin-bottom:1.25rem}
+.filters-row .form-group{margin:0;min-width:160px;flex:1}
+.filter-actions{display:flex;gap:.5rem;align-items:flex-end;padding-bottom:0}
+
+/* ── MODAL ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;display:none;align-items:center;justify-content:center;padding:1rem}
+.modal-overlay.open{display:flex}
+.modal{background:#fff;border-radius:1rem;width:100%;max-width:780px;max-height:92vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.modal-header{padding:1.25rem 1.5rem;border-bottom:1px solid #E2E8F0;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:#fff;z-index:1}
+.modal-title{font-weight:700;font-size:1rem}
+.modal-body{padding:1.5rem}
+.modal-footer{padding:1rem 1.5rem;border-top:1px solid #E2E8F0;display:flex;justify-content:flex-end;gap:.75rem;position:sticky;bottom:0;background:#fff}
+.modal-close{background:none;border:none;font-size:1.25rem;cursor:pointer;color:#94A3B8;padding:.25rem;line-height:1}
+.modal-close:hover{color:#374151}
+
+/* ── SLA INDICATOR ── */
+.sla-bar-wrap{height:6px;background:#E2E8F0;border-radius:3px;margin-top:.3rem;overflow:hidden}
+.sla-bar{height:100%;border-radius:3px;transition:width .3s}
+.sla-ok{background:#10B981}.sla-warn{background:#F59E0B}.sla-over{background:#EF4444}
+.sla-text{font-size:.75rem;font-weight:600}
+.sla-text.ok{color:#10B981}.sla-text.warn{color:#F59E0B}.sla-text.over{color:#EF4444}
+
+/* ── QUEUE CARD ── */
+.queue-card{border:1.5px solid #E2E8F0;border-radius:.75rem;padding:1.25rem;margin-bottom:1rem;transition:border-color .15s;background:#fff}
+.queue-card:hover{border-color:#4F46E5}
+.queue-card.disputed{border-color:#EF4444;background:#FFF5F5}
+.queue-header{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:.75rem;flex-wrap:wrap}
+.queue-agent{font-weight:700;font-size:.95rem}
+.queue-meta{font-size:.78rem;color:#64748B;margin-top:.2rem}
+.queue-detail{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.75rem;margin-bottom:1rem}
+.queue-field{font-size:.8rem}.queue-field strong{display:block;color:#374151;margin-bottom:.15rem;font-size:.72rem;text-transform:uppercase;letter-spacing:.04em;color:#94A3B8}
+
+/* ── ADMIN TABS ── */
+.admin-tabs{display:flex;gap:.5rem;margin-bottom:1.5rem;border-bottom:2px solid #E2E8F0;padding-bottom:0}
+.admin-tab{background:none;border:none;padding:.65rem 1.25rem;font-size:.875rem;font-weight:600;cursor:pointer;color:#64748B;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s}
+.admin-tab:hover{color:#4F46E5}
+.admin-tab.active{color:#4F46E5;border-bottom-color:#4F46E5}
+.admin-section{display:none}
+.admin-section.active{display:block}
+
+/* ── LOADING & TOAST ── */
+.loading-overlay{position:fixed;inset:0;background:rgba(255,255,255,.8);z-index:2000;display:none;flex-direction:column;align-items:center;justify-content:center;gap:1rem}
+.loading-overlay.show{display:flex}
+.spinner{width:40px;height:40px;border:4px solid #E2E8F0;border-top-color:#4F46E5;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-msg{color:#64748B;font-weight:500;font-size:.9rem}
+.toast{position:fixed;bottom:2rem;right:2rem;color:#fff;padding:.9rem 1.4rem;border-radius:.75rem;font-weight:600;font-size:.875rem;transform:translateY(120px);opacity:0;transition:all .3s cubic-bezier(.34,1.56,.64,1);z-index:10000;max-width:360px;line-height:1.4}
+.toast.show{transform:translateY(0);opacity:1}
+
+/* ── LOGIN ── */
+.login-overlay{position:fixed;inset:0;background:linear-gradient(135deg,#4F46E5 0%,#7C3AED 100%);z-index:9999;display:none;align-items:center;justify-content:center}
+.login-overlay.show{display:flex}
+.login-card{background:#fff;border-radius:1.25rem;padding:2.5rem;width:100%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.3);margin:1rem}
+.login-logo{text-align:center;margin-bottom:1.5rem;font-size:2rem}
+.login-title{font-size:1.4rem;font-weight:800;text-align:center;margin-bottom:.5rem;color:#1E293B}
+.login-sub{font-size:.875rem;color:#64748B;text-align:center;margin-bottom:1.75rem}
+.login-card input{margin-bottom:1rem}
+.login-card .btn{width:100%;justify-content:center;padding:.8rem;font-size:.95rem}
+.login-hint{font-size:.78rem;color:#94A3B8;text-align:center;margin-top:1rem}
+
+/* ── HIERARCHY TABLE ── */
+.hier-actions{display:flex;gap:.5rem;justify-content:flex-end;margin-bottom:1rem}
+.empty-state{text-align:center;padding:3rem;color:#94A3B8}
+.empty-state .icon{font-size:2.5rem;margin-bottom:.75rem}
+.empty-state p{font-size:.9rem}
+
+/* ── PAGE HEADER ── */
+.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:.75rem}
+.page-title{font-size:1.25rem;font-weight:800;color:#1E293B}
+.page-sub{font-size:.85rem;color:#64748B;margin-top:.2rem}
+
+/* ── DETAIL VIEW ── */
+.detail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem}
+.detail-field{background:#F8FAFC;border-radius:.5rem;padding:.85rem 1rem}
+.detail-field .df-label{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#94A3B8;margin-bottom:.35rem}
+.detail-field .df-value{font-size:.875rem;color:#1E293B;font-weight:500}
+.detail-field.full{grid-column:1/-1}
+
+/* ── NOTIFICATION DOT ── */
+.notif-dot{background:#EF4444;color:#fff;border-radius:99px;font-size:.65rem;font-weight:800;padding:.1rem .4rem;margin-left:.3rem;line-height:1.5}
+
+/* ── RESPONSIVE ── */
+@media(max-width:768px){
+  .navbar{padding:0 1rem;min-height:56px}
+  .nav-links .nav-btn span.nav-label{display:none}
+  .main{padding:1rem}
+  .stat-value{font-size:1.6rem}
+  .charts-grid{grid-template-columns:1fr}
+  .form-grid{grid-template-columns:1fr}
+  .filters-row{flex-direction:column}
+  .modal{max-height:95vh}
+}
+</style>
+</head>
+<body>
+
+<!-- ══ LOADING ═══════════════════════════════════════════════════════════════ -->
+<div class="loading-overlay" id="loading-overlay">
+  <div class="spinner"></div>
+  <div class="loading-msg" id="loading-msg">Loading data…</div>
+</div>
+
+<!-- ══ LOGIN ══════════════════════════════════════════════════════════════════ -->
+<div class="login-overlay" id="login-overlay">
+  <div class="login-card">
+    <div class="login-logo">📊</div>
+    <h1 class="login-title">CookUnity DSAT Tracker</h1>
+    <p class="login-sub">Sign in with your CookUnity email address</p>
+    <input type="email" id="login-email" placeholder="you@cookunity.com" autocomplete="email">
+    <input type="text" id="login-name" placeholder="Your full name">
+    <button class="btn btn-primary" onclick="doLogin()">Sign In</button>
+    <p class="login-hint">Your email determines your access level.</p>
+  </div>
+</div>
+
+<!-- ══ NAVBAR ══════════════════════════════════════════════════════════════════ -->
+<nav class="navbar" id="navbar" style="display:none">
+  <div class="navbar-brand">
+    <div class="logo">📊</div>
+    <span>DSAT Tracker</span>
+  </div>
+  <div class="nav-links" id="nav-links">
+    <button class="nav-btn active" data-page="dashboard" onclick="navTo('dashboard')">
+      <span>🏠</span><span class="nav-label">Dashboard</span>
+    </button>
+    <button class="nav-btn" data-page="submit" onclick="navTo('submit')" id="nav-submit" style="display:none">
+      <span>➕</span><span class="nav-label">New DSAT</span>
+    </button>
+    <button class="nav-btn" data-page="records" onclick="navTo('records')">
+      <span>📋</span><span class="nav-label">Records</span>
+    </button>
+    <button class="nav-btn" data-page="queue" onclick="navTo('queue')" id="nav-queue" style="display:none">
+      <span>🔔</span><span class="nav-label">Feedback Queue</span>
+      <span class="notif-dot" id="queue-badge" style="display:none">0</span>
+    </button>
+    <button class="nav-btn" data-page="admin" onclick="navTo('admin')" id="nav-admin" style="display:none">
+      <span>⚙️</span><span class="nav-label">Admin</span>
+    </button>
+  </div>
+  <div class="nav-user">
+    <div class="user-pill" id="user-pill">
+      <span id="user-name-nav">—</span>
+      <span class="role-badge role-viewer" id="role-badge">viewer</span>
+    </div>
+    <button class="btn-logout" onclick="logout()">Sign out</button>
+  </div>
+</nav>
+
+<!-- ══ MAIN CONTENT ════════════════════════════════════════════════════════════ -->
+<div class="main" id="main-content" style="display:none">
+
+  <!-- ── DASHBOARD ─────────────────────────────────────────────────────────── -->
+  <div class="page active" id="page-dashboard">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Dashboard</div>
+        <div class="page-sub">CookUnity DSAT Overview</div>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="apiFetch().then(d=>{cachedData=d;renderDashboard(d)})">↺ Refresh</button>
+    </div>
+    <div class="stats-grid" id="dash-stats"></div>
+    <div class="charts-grid">
+      <div class="chart-card">
+        <div class="chart-title">DSATs by Main Reason</div>
+        <div class="chart-wrap"><canvas id="chart-reason"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Preventable vs Non-Preventable</div>
+        <div class="chart-wrap"><canvas id="chart-preventable"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Issue Resolution Rate</div>
+        <div class="chart-wrap"><canvas id="chart-resolved"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Feedback SLA Status (Agent-Related)</div>
+        <div class="chart-wrap"><canvas id="chart-sla"></canvas></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">📅 Recent DSATs</div>
+      <div class="table-wrap" id="dash-recent"></div>
+    </div>
+  </div>
+
+  <!-- ── SUBMIT DSAT ─────────────────────────────────────────────────────────── -->
+  <div class="page" id="page-submit">
+    <div class="page-header">
+      <div>
+        <div class="page-title">New DSAT Analysis</div>
+        <div class="page-sub">Complete all fields before submitting</div>
+      </div>
+    </div>
+    <div class="card">
+      <form id="dsat-form" onsubmit="submitDSAT(event)">
+        <div class="form-grid">
+
+          <!-- 1. Date of Analysis -->
+          <div class="form-group">
+            <label for="f-analysis-date">1. Date of Analysis *</label>
+            <input type="date" id="f-analysis-date" required>
+          </div>
+
+          <!-- 2. DSAT Date -->
+          <div class="form-group">
+            <label for="f-dsat-date">2. DSAT Date (date received) *</label>
+            <input type="date" id="f-dsat-date" required>
+          </div>
+
+          <!-- 3. Ticket ID -->
+          <div class="form-group">
+            <label for="f-ticket-id">3. Ticket ID (number only) *</label>
+            <input type="text" id="f-ticket-id" placeholder="e.g. 1234567" pattern="[0-9]+" title="Numbers only" required>
+          </div>
+
+          <!-- 4. Specialist Name (searchable) -->
+          <div class="form-group">
+            <label for="f-specialist-search">4. Specialist Name *</label>
+            <div class="specialist-wrap">
+              <input type="text" id="f-specialist-search" placeholder="Search agent name…" autocomplete="off" oninput="filterSpecialists(this.value)" onfocus="openSpecialistDropdown()" required>
+              <input type="hidden" id="f-specialist-name">
+              <input type="hidden" id="f-specialist-email">
+              <div class="specialist-dropdown" id="specialist-dropdown"></div>
+            </div>
+          </div>
+
+          <!-- Auto-filled: Supervisor -->
+          <div class="form-group">
+            <label>Supervisor (auto-filled)</label>
+            <input type="text" id="f-supervisor-name" readonly placeholder="Auto-populated from hierarchy" style="background:#F8FAFC;color:#64748B">
+          </div>
+
+          <!-- Auto-filled: Manager -->
+          <div class="form-group">
+            <label>Manager (auto-filled)</label>
+            <input type="text" id="f-manager-name" readonly placeholder="Auto-populated from hierarchy" style="background:#F8FAFC;color:#64748B">
+          </div>
+
+          <!-- 5a. Main Reason -->
+          <div class="form-group">
+            <label for="f-main-reason">5. DSAT Responsibility — Main Reason *</label>
+            <select id="f-main-reason" required onchange="updateSubReasons()">
+              <option value="">Select main reason…</option>
+              <option>Agent - Related</option>
+              <option>Customer Expectations</option>
+              <option>Process - Related</option>
+              <option>System - Related</option>
+              <option>Product - Related</option>
+            </select>
+          </div>
+
+          <!-- 5b. Sub Reason -->
+          <div class="form-group">
+            <label for="f-sub-reason">Sub-Reason *</label>
+            <select id="f-sub-reason" required>
+              <option value="">Select main reason first…</option>
+            </select>
+          </div>
+
+          <!-- 6. Preventable -->
+          <div class="form-group">
+            <label>6. Was the issue preventable? *</label>
+            <div class="radio-group">
+              <label class="radio-option"><input type="radio" name="f-preventable" value="YES" required> YES</label>
+              <label class="radio-option"><input type="radio" name="f-preventable" value="NO"> NO</label>
+            </div>
+          </div>
+
+          <!-- 10. Issue Resolved -->
+          <div class="form-group">
+            <label>10. Was the issue resolved? (customer's perspective) *</label>
+            <div class="radio-group">
+              <label class="radio-option"><input type="radio" name="f-resolved" value="YES" required> YES</label>
+              <label class="radio-option"><input type="radio" name="f-resolved" value="NO"> NO</label>
+            </div>
+          </div>
+
+          <!-- 11. Correct Process -->
+          <div class="form-group">
+            <label>11. Was the correct process followed? (company's perspective) *</label>
+            <div class="radio-group">
+              <label class="radio-option"><input type="radio" name="f-process" value="YES" required> YES</label>
+              <label class="radio-option"><input type="radio" name="f-process" value="NO"> NO</label>
+            </div>
+          </div>
+
+          <!-- 7. Supporting Details -->
+          <div class="form-group full">
+            <label for="f-supporting">7. Supporting Details *</label>
+            <textarea id="f-supporting" placeholder="Provide context or specifics about the issue…" required></textarea>
+          </div>
+
+          <!-- 8. Resolution Provided -->
+          <div class="form-group full">
+            <label for="f-resolution">8. Resolution Provided *</label>
+            <textarea id="f-resolution" placeholder="Describe the solution offered to the customer…" required></textarea>
+          </div>
+
+          <!-- 9. Improvement Opportunities -->
+          <div class="form-group full">
+            <label for="f-improvement">9. Improvement Opportunities & Next Steps</label>
+            <textarea id="f-improvement" placeholder="Identify learnings, coaching opportunities, or process improvements…"></textarea>
+          </div>
+
+        </div>
+        <div style="margin-top:1.5rem;display:flex;gap:.75rem;justify-content:flex-end">
+          <button type="button" class="btn btn-secondary" onclick="resetForm()">Clear Form</button>
+          <button type="submit" class="btn btn-primary">Submit DSAT Analysis</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── RECORDS ──────────────────────────────────────────────────────────────── -->
+  <div class="page" id="page-records">
+    <div class="page-header">
+      <div>
+        <div class="page-title">All DSAT Records</div>
+        <div class="page-sub" id="records-count-label">Loading…</div>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="exportCSV()">⬇ Export CSV</button>
+    </div>
+    <div class="card">
+      <div class="filters-row">
+        <div class="form-group"><label>Date Range (from)</label><input type="date" id="filter-from"></div>
+        <div class="form-group"><label>Date Range (to)</label><input type="date" id="filter-to"></div>
+        <div class="form-group">
+          <label>Main Reason</label>
+          <select id="filter-reason">
+            <option value="">All Reasons</option>
+            <option>Agent - Related</option>
+            <option>Customer Expectations</option>
+            <option>Process - Related</option>
+            <option>System - Related</option>
+            <option>Product - Related</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Supervisor</label><select id="filter-supervisor"><option value="">All Supervisors</option></select></div>
+        <div class="form-group">
+          <label>Feedback Status</label>
+          <select id="filter-feedback">
+            <option value="">All Statuses</option>
+            <option>Pending</option>
+            <option>Feedback Delivered</option>
+            <option>Disputed</option>
+          </select>
+        </div>
+        <div class="filter-actions">
+          <button class="btn btn-primary btn-sm" onclick="applyFilters()">Apply</button>
+          <button class="btn btn-secondary btn-sm" onclick="clearFilters()">Clear</button>
+        </div>
+      </div>
+      <div class="table-wrap"><table id="records-table">
+        <thead><tr>
+          <th>Ticket</th><th>DSAT Date</th><th>Specialist</th><th>Supervisor</th>
+          <th>Main Reason</th><th>Sub-Reason</th><th>Preventable</th>
+          <th>Resolved</th><th>Feedback</th><th>Submitted By</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="records-tbody"></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- ── FEEDBACK QUEUE ──────────────────────────────────────────────────────── -->
+  <div class="page" id="page-queue">
+    <div class="page-header">
+      <div>
+        <div class="page-title">🔔 Feedback Queue</div>
+        <div class="page-sub">Agent-Related DSATs requiring supervisor feedback (10-day SLA)</div>
+      </div>
+    </div>
+    <div class="stats-grid" id="queue-stats"></div>
+    <div id="queue-list"></div>
+  </div>
+
+  <!-- ── ADMIN ───────────────────────────────────────────────────────────────── -->
+  <div class="page" id="page-admin">
+    <div class="page-header">
+      <div>
+        <div class="page-title">⚙️ Admin Panel</div>
+        <div class="page-sub">Manage roles and agent-supervisor hierarchy</div>
+      </div>
+    </div>
+    <div class="admin-tabs">
+      <button class="admin-tab active" onclick="switchAdminTab('roles')">👤 User Roles</button>
+      <button class="admin-tab" onclick="switchAdminTab('hierarchy')">🏗 Hierarchy</button>
+    </div>
+
+    <!-- Roles Section -->
+    <div class="admin-section active" id="admin-roles">
+      <div class="card">
+        <div class="card-title">Current User Roles</div>
+        <div style="display:flex;gap:.75rem;margin-bottom:1rem;flex-wrap:wrap">
+          <input type="email" id="new-role-email" placeholder="email@cookunity.com" style="flex:1;min-width:200px">
+          <select id="new-role-select" style="width:160px">
+            <option value="analyst">Analyst (QA/Lead)</option>
+            <option value="supervisor">Supervisor</option>
+            <option value="admin">Admin</option>
+            <option value="viewer">Viewer</option>
+          </select>
+          <button class="btn btn-primary btn-sm" onclick="addRole()">Add / Update Role</button>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Email</th><th>Role</th><th>Assigned By</th><th>Date</th><th>Action</th></tr></thead>
+          <tbody id="roles-tbody"></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <!-- Hierarchy Section -->
+    <div class="admin-section" id="admin-hierarchy">
+      <div class="card">
+        <div class="card-title">Agent–Supervisor Hierarchy</div>
+        <div class="hier-actions">
+          <input type="text" id="hier-search" placeholder="Search by name or email…" style="width:240px" oninput="renderHierarchyTable()">
+          <button class="btn btn-primary btn-sm" onclick="openHierarchyModal()">+ Add Agent</button>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Agent Name</th><th>Email</th><th>Role</th><th>Supervisor</th><th>Manager</th><th>Tenure</th><th>Actions</th></tr></thead>
+          <tbody id="hier-tbody"></tbody>
+        </table></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- ══ MODAL: VIEW / EDIT DSAT ════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="detail-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="detail-modal-title">DSAT Details</span>
+      <button class="modal-close" onclick="closeModal('detail-modal')">✕</button>
+    </div>
+    <div class="modal-body" id="detail-modal-body"></div>
+    <div class="modal-footer" id="detail-modal-footer"></div>
+  </div>
+</div>
+
+<!-- ══ MODAL: FEEDBACK ════════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="feedback-modal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <span class="modal-title">Submit Feedback</span>
+      <button class="modal-close" onclick="closeModal('feedback-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="fb-dsat-id">
+      <div class="form-group" style="margin-bottom:1rem">
+        <label>Feedback for Agent *</label>
+        <textarea id="fb-feedback" placeholder="Describe the coaching feedback provided to the agent…" style="min-height:120px"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Status *</label>
+        <select id="fb-status">
+          <option value="Feedback Delivered">Feedback Delivered</option>
+          <option value="Disputed">Disputed — Send to Admin for Review</option>
+        </select>
+      </div>
+      <div class="form-group" id="fb-dispute-wrap" style="display:none;margin-top:1rem">
+        <label>Dispute Notes (required if Disputed)</label>
+        <textarea id="fb-dispute-notes" placeholder="Explain the reason for dispute…"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('feedback-modal')">Cancel</button>
+      <button class="btn btn-success" onclick="saveFeedback()">Save Feedback</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL: HIERARCHY ADD / EDIT ════════════════════════════════════════════ -->
+<div class="modal-overlay" id="hierarchy-modal">
+  <div class="modal" style="max-width:600px">
+    <div class="modal-header">
+      <span class="modal-title" id="hier-modal-title">Add Agent</span>
+      <button class="modal-close" onclick="closeModal('hierarchy-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="h-original-email">
+      <div class="form-grid" style="grid-template-columns:1fr 1fr">
+        <div class="form-group"><label>Agent Name *</label><input id="h-agent-name" placeholder="Full name"></div>
+        <div class="form-group"><label>Agent Email *</label><input id="h-agent-email" placeholder="agent@cookunity.com" type="email"></div>
+        <div class="form-group">
+          <label>Role</label>
+          <select id="h-role">
+            <option>Specialist</option><option>Coordinator</option><option>Lead</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Tenure</label><input id="h-tenure" placeholder="e.g. 365 days"></div>
+        <div class="form-group"><label>Supervisor Name</label><input id="h-sup-name" placeholder="Supervisor full name"></div>
+        <div class="form-group"><label>Supervisor Email</label><input id="h-sup-email" placeholder="sup@cookunity.com" type="email"></div>
+        <div class="form-group"><label>Manager Name</label><input id="h-mgr-name" placeholder="Manager full name"></div>
+        <div class="form-group"><label>Manager Email</label><input id="h-mgr-email" placeholder="mgr@cookunity.com" type="email"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('hierarchy-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveHierarchyRow()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TOAST ═══════════════════════════════════════════════════════════════════ -->
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+// ══ CONFIG ════════════════════════════════════════════════════════════════════
+const DEFAULT_SCRIPT_URL  = 'https://script.google.com/macros/s/AKfycbxYjUZlJL52RyG3Ij7USGmG45k3fdRbgyckezJ4g0L0uvcA9wvc4u_iY9wzltuy_nfdCA/exec';
+const DEFAULT_ADMIN_EMAIL = 'cinthiavelez@cookunity.com';
+const USER_KEY = 'dsat_user_v1';
+const SLA_DAYS = 10;
+
+// ══ SUB-REASONS MAP ═══════════════════════════════════════════════════════════
+const SUB_REASONS = {
+  'Agent - Related': [
+    'Unresolved Issue','Lack of Understanding','Rude or Dismissive Tone',
+    'Slow Response Time','Poor Handoff / Repetition','Generic or Scripted Response',
+    'Lack of Empathy','Multiple Contacts Required','Incorrect Resolution'
+  ],
+  'Customer Expectations': [
+    'Unexpected Charges or Billing Confusion',"Product/Service Didn't Match Description",
+    'Lack of Transparency in Policies','Surprise Delivery or Subscription Rules',
+    'Limited Support Hours or Channels','Delays Without Warning',
+    'Missing or Confusing Onboarding','No clear reason identified'
+  ],
+  'Process - Related': [
+    'Slow or Complex Resolution Process','Multiple Handoffs or Repetitive Verification',
+    'Inflexible or Outdated Policies','Lack of Proactive Communication',
+    'Delayed Escalations or Internal Bottlenecks','Lack of Follow-Through or Closure'
+  ],
+  'System - Related': [
+    'App or Website Crashes or Errors','Login or Access Issues','Slow or Unresponsive System',
+    'Checkout or Payment Failures','Poor Mobile Optimization','Order Modifications Not Saving',
+    'Missing Notifications or Alerts','Data Sync or Account Glitches','Disconnected Systems or Tools'
+  ],
+  'Product - Related': [
+    'Poor Product Quality','Incorrect or Missing Items','Damaged Product Upon Delivery',
+    'Inconsistent Portion Sizes or Nutritional Expectations','Poor Presentation vs. Expectations',
+    'Limited or Repetitive Menu Options','Incorrect Labeling or Allergen Concerns',
+    'Meal Not Suitable After Transit','3PL Delay'
+  ]
+};
+
+// ══ STATE ══════════════════════════════════════════════════════════════════════
+let cachedData      = [];
+let cachedHierarchy = [];
+let cachedRole      = 'viewer';
+let cachedRoles     = [];
+let currentPage     = 'dashboard';
+let chartInstances  = {};
+
+// ══ USER ══════════════════════════════════════════════════════════════════════
+function getUser()         { try { return JSON.parse(localStorage.getItem(USER_KEY)); } catch(e){ return null; } }
+function setUser(u)        { localStorage.setItem(USER_KEY, JSON.stringify(u)); }
+function scriptUrl()       { return DEFAULT_SCRIPT_URL; }
+function isAdmin()         { return cachedRole==='admin' || (getUser()&&getUser().email.toLowerCase()===DEFAULT_ADMIN_EMAIL.toLowerCase()); }
+function isSupervisor()    { return cachedRole==='supervisor' || isAdmin(); }
+function canSubmit()       { return cachedRole!=='viewer'; }
+
+function doLogin() {
+  const email = document.getElementById('login-email').value.trim().toLowerCase();
+  const name  = document.getElementById('login-name').value.trim();
+  if (!email || !email.includes('@')) { showToast('Please enter a valid email.','#EF4444'); return; }
+  if (!name) { showToast('Please enter your name.','#EF4444'); return; }
+  setUser({email, name});
+  document.getElementById('login-overlay').classList.remove('show');
+  document.getElementById('navbar').style.display='flex';
+  document.getElementById('main-content').style.display='block';
+  initApp();
+}
+
+function logout() {
+  localStorage.removeItem(USER_KEY);
+  location.reload();
+}
+
+function showLogin() {
+  document.getElementById('login-overlay').classList.add('show');
+  document.getElementById('navbar').style.display='none';
+  document.getElementById('main-content').style.display='none';
+}
+
+// ══ API ════════════════════════════════════════════════════════════════════════
+async function apiFetch() {
+  showLoading(true,'Loading data…');
+  try {
+    const u   = getUser();
+    const url = u ? `${scriptUrl()}?email=${encodeURIComponent(u.email)}` : scriptUrl();
+    const res = await fetch(url, {redirect:'follow'});
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    cachedData      = (data.records   || []).map(normalizeRow);
+    cachedHierarchy = (data.hierarchy || []);
+    if (data.role) { cachedRole = data.role; updateRoleUI(); }
+    buildSupervisorFilter();
+    populateSpecialistDropdown();
+    return cachedData;
+  } catch(err) {
+    console.error(err);
+    showToast('⚠️ Could not load data. Check the script URL.','#EF4444');
+    return cachedData;
+  } finally {
+    showLoading(false);
+  }
+}
+
+async function apiPost(body) {
+  showLoading(true,'Saving…');
+  try {
+    const u   = getUser();
+    const res = await fetch(scriptUrl(), {
+      method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({...body, email: u?.email||'', editorName: u?.name||''}),
+      redirect:'follow'
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    return data;
+  } finally {
+    showLoading(false);
+  }
+}
+
+async function loadRoles() {
+  const u = getUser();
+  const res = await fetch(`${scriptUrl()}?action=getRoles&email=${encodeURIComponent(u?.email||'')}`, {redirect:'follow'});
+  const data = await res.json();
+  cachedRoles = data.roles || [];
+  renderRolesTable();
+}
+
+function normalizeRow(r) {
+  return {
+    id: String(r.id||''), analysisDate: String(r.analysisDate||''),
+    dsatDate: String(r.dsatDate||''), ticketId: String(r.ticketId||''),
+    specialistName: String(r.specialistName||''), specialistEmail: String(r.specialistEmail||''),
+    supervisorName: String(r.supervisorName||''), supervisorEmail: String(r.supervisorEmail||''),
+    managerName: String(r.managerName||''), mainReason: String(r.mainReason||''),
+    subReason: String(r.subReason||''), isPreventable: String(r.isPreventable||''),
+    supportingDetails: String(r.supportingDetails||''), resolutionProvided: String(r.resolutionProvided||''),
+    improvementOpportunities: String(r.improvementOpportunities||''),
+    issueResolved: String(r.issueResolved||''), correctProcessFollowed: String(r.correctProcessFollowed||''),
+    submittedByName: String(r.submittedByName||''), submittedByEmail: String(r.submittedByEmail||''),
+    submittedAt: String(r.submittedAt||''),
+    editedFlag: String(r.editedFlag||''), lastEditedByName: String(r.lastEditedByName||''),
+    lastEditedByEmail: String(r.lastEditedByEmail||''), lastEditedAt: String(r.lastEditedAt||''),
+    feedbackStatus: String(r.feedbackStatus||''), supervisorFeedback: String(r.supervisorFeedback||''),
+    feedbackProvidedAt: String(r.feedbackProvidedAt||''), disputeNotes: String(r.disputeNotes||''),
+    disputeReviewedBy: String(r.disputeReviewedBy||''), disputeReviewedAt: String(r.disputeReviewedAt||'')
+  };
+}
+
+// ══ NAVIGATION ════════════════════════════════════════════════════════════════
+const PAGES = ['dashboard','submit','records','queue','admin'];
+
+function navTo(page) {
+  currentPage = page;
+  PAGES.forEach(p => {
+    const el = document.getElementById('page-'+p);
+    if (el) el.classList.toggle('active', p===page);
+  });
+  document.querySelectorAll('.nav-btn[data-page]').forEach(b =>
+    b.classList.toggle('active', b.dataset.page===page)
+  );
+  if (page==='dashboard') renderDashboard(cachedData);
+  else if (page==='records') renderRecords(cachedData);
+  else if (page==='queue')   renderQueue(cachedData);
+  else if (page==='admin')   { switchAdminTab('roles'); loadRoles(); renderHierarchyTable(); }
+}
+
+// ══ ROLE UI ═══════════════════════════════════════════════════════════════════
+function updateRoleUI() {
+  const u = getUser();
+  if (!u) return;
+  document.getElementById('user-name-nav').textContent = u.name;
+  const rb = document.getElementById('role-badge');
+  rb.textContent = cachedRole;
+  rb.className = 'role-badge role-'+cachedRole;
+
+  document.getElementById('nav-submit').style.display = canSubmit() ? '' : 'none';
+  document.getElementById('nav-queue').style.display  = isSupervisor() ? '' : 'none';
+  document.getElementById('nav-admin').style.display  = isAdmin() ? '' : 'none';
+
+  // Queue badge
+  const pending = cachedData.filter(r=>r.mainReason==='Agent - Related' && r.feedbackStatus==='Pending');
+  const myPending = isSupervisor() && !isAdmin()
+    ? pending.filter(r=>r.supervisorEmail.toLowerCase()===(u.email||''))
+    : pending;
+  const badge = document.getElementById('queue-badge');
+  if (myPending.length > 0) {
+    badge.style.display=''; badge.textContent=myPending.length;
+  } else {
+    badge.style.display='none';
+  }
+}
+
+// ══ SPECIALIST DROPDOWN ═══════════════════════════════════════════════════════
+function populateSpecialistDropdown() {
+  // cache is ready — dropdown is filtered on input
+}
+
+function filterSpecialists(query) {
+  const dd = document.getElementById('specialist-dropdown');
+  if (!query || query.length < 1) { dd.classList.remove('open'); return; }
+  const q = query.toLowerCase();
+  const matches = cachedHierarchy.filter(h =>
+    h.agentName && (h.agentName.toLowerCase().includes(q) || (h.agentEmail||'').toLowerCase().includes(q))
+  ).slice(0, 30);
+
+  if (!matches.length) { dd.innerHTML='<div class="spec-option" style="color:#94A3B8">No agents found</div>'; dd.classList.add('open'); return; }
+  dd.innerHTML = matches.map(h => `
+    <div class="spec-option" onclick="selectSpecialist(${JSON.stringify(h.agentName).replace(/'/g,"&#39;")},${JSON.stringify(h.agentEmail)},${JSON.stringify(h.supervisorName||'')},${JSON.stringify(h.supervisorEmail||'')},${JSON.stringify(h.managerName||'')})">
+      ${escHtml(h.agentName)}
+      <div class="spec-meta">${escHtml(h.agentEmail||'')} · ${escHtml(h.role||'')} · Sup: ${escHtml(h.supervisorName||'—')}</div>
+    </div>`).join('');
+  dd.classList.add('open');
+}
+
+function selectSpecialist(name, email, supName, supEmail, mgrName) {
+  document.getElementById('f-specialist-search').value = name;
+  document.getElementById('f-specialist-name').value   = name;
+  document.getElementById('f-specialist-email').value  = email;
+  document.getElementById('f-supervisor-name').value   = supName || '—';
+  document.getElementById('f-manager-name').value      = mgrName || '—';
+  document.getElementById('specialist-dropdown').classList.remove('open');
+  if (supName) {
+    document.getElementById('f-supervisor-name').classList.add('auto-filled');
+    document.getElementById('f-manager-name').classList.add('auto-filled');
+  }
+}
+
+function openSpecialistDropdown() {
+  const val = document.getElementById('f-specialist-search').value;
+  if (val) filterSpecialists(val);
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.specialist-wrap'))
+    document.getElementById('specialist-dropdown').classList.remove('open');
+});
+
+// ══ SUB-REASONS ═══════════════════════════════════════════════════════════════
+function updateSubReasons() {
+  const main = document.getElementById('f-main-reason').value;
+  const sub  = document.getElementById('f-sub-reason');
+  const opts = SUB_REASONS[main] || [];
+  sub.innerHTML = opts.length
+    ? '<option value="">Select sub-reason…</option>' + opts.map(o=>`<option>${escHtml(o)}</option>`).join('')
+    : '<option value="">Select main reason first…</option>';
+}
+
+// ══ SUBMIT DSAT ═══════════════════════════════════════════════════════════════
+async function submitDSAT(e) {
+  e.preventDefault();
+  const specName = document.getElementById('f-specialist-name').value;
+  if (!specName) { showToast('Please select a specialist from the dropdown.','#EF4444'); return; }
+  const u = getUser();
+  const record = {
+    analysisDate:           document.getElementById('f-analysis-date').value,
+    dsatDate:               document.getElementById('f-dsat-date').value,
+    ticketId:               document.getElementById('f-ticket-id').value,
+    specialistName:         specName,
+    specialistEmail:        document.getElementById('f-specialist-email').value,
+    mainReason:             document.getElementById('f-main-reason').value,
+    subReason:              document.getElementById('f-sub-reason').value,
+    isPreventable:          document.querySelector('input[name="f-preventable"]:checked')?.value||'',
+    supportingDetails:      document.getElementById('f-supporting').value,
+    resolutionProvided:     document.getElementById('f-resolution').value,
+    improvementOpportunities: document.getElementById('f-improvement').value,
+    issueResolved:          document.querySelector('input[name="f-resolved"]:checked')?.value||'',
+    correctProcessFollowed: document.querySelector('input[name="f-process"]:checked')?.value||'',
+    submittedByName:        u?.name||'',
+    submittedByEmail:       u?.email||''
+  };
+  try {
+    const res = await apiPost({action:'addDSAT', record});
+    showToast('✅ DSAT submitted successfully!');
+    resetForm();
+    const data = await apiFetch();
+    cachedData = data;
+    updateRoleUI();
+  } catch(err) {
+    showToast('❌ Error: '+err.message,'#EF4444');
+  }
+}
+
+function resetForm() {
+  document.getElementById('dsat-form').reset();
+  document.getElementById('f-specialist-search').value='';
+  document.getElementById('f-specialist-name').value='';
+  document.getElementById('f-specialist-email').value='';
+  document.getElementById('f-supervisor-name').value='';
+  document.getElementById('f-supervisor-name').classList.remove('auto-filled');
+  document.getElementById('f-manager-name').value='';
+  document.getElementById('f-manager-name').classList.remove('auto-filled');
+  document.getElementById('f-sub-reason').innerHTML='<option value="">Select main reason first…</option>';
+}
+
+// ══ DASHBOARD ═════════════════════════════════════════════════════════════════
+function renderDashboard(data) {
+  const total      = data.length;
+  const agentRel   = data.filter(r=>r.mainReason==='Agent - Related').length;
+  const preventable= data.filter(r=>r.isPreventable==='YES').length;
+  const resolved   = data.filter(r=>r.issueResolved==='YES').length;
+  const pending    = data.filter(r=>r.feedbackStatus==='Pending').length;
+  const disputed   = data.filter(r=>r.feedbackStatus==='Disputed').length;
+  const slaBreach  = data.filter(r=>r.feedbackStatus==='Pending' && slaDaysLeft(r.submittedAt)<0).length;
+
+  const stats = document.getElementById('dash-stats');
+  stats.innerHTML = `
+    <div class="stat-card indigo"><div class="stat-label">Total DSATs</div><div class="stat-value">${total}</div><div class="stat-sub">All time</div></div>
+    <div class="stat-card purple"><div class="stat-label">Agent-Related</div><div class="stat-value">${agentRel}</div><div class="stat-sub">${total?Math.round(agentRel/total*100):0}% of total</div></div>
+    <div class="stat-card amber"><div class="stat-label">Preventable</div><div class="stat-value">${preventable}</div><div class="stat-sub">${total?Math.round(preventable/total*100):0}% preventable</div></div>
+    <div class="stat-card green"><div class="stat-label">Issue Resolved</div><div class="stat-value">${resolved}</div><div class="stat-sub">${total?Math.round(resolved/total*100):0}% resolved</div></div>
+    <div class="stat-card red"><div class="stat-label">Pending Feedback</div><div class="stat-value">${pending}</div><div class="stat-sub">${disputed} disputed</div></div>
+    <div class="stat-card sky"><div class="stat-label">SLA Breaches</div><div class="stat-value">${slaBreach}</div><div class="stat-sub">Over 10-day SLA</div></div>`;
+
+  renderChart('chart-reason', 'doughnut',
+    Object.keys(SUB_REASONS),
+    Object.keys(SUB_REASONS).map(k=>data.filter(r=>r.mainReason===k).length),
+    ['#4F46E5','#F59E0B','#10B981','#0EA5E9','#EF4444']);
+
+  renderChart('chart-preventable','doughnut',
+    ['Preventable','Not Preventable'],
+    [preventable, total-preventable],['#10B981','#E2E8F0']);
+
+  renderChart('chart-resolved','doughnut',
+    ['Resolved','Not Resolved'],
+    [resolved, total-resolved],['#4F46E5','#E2E8F0']);
+
+  const slaPending  = data.filter(r=>r.feedbackStatus==='Pending').length;
+  const slaDelivered= data.filter(r=>r.feedbackStatus==='Feedback Delivered').length;
+  const slaDisputed = data.filter(r=>r.feedbackStatus==='Disputed').length;
+  const slaNa       = data.filter(r=>!r.feedbackStatus).length;
+  renderChart('chart-sla','doughnut',
+    ['Pending','Delivered','Disputed','N/A'],
+    [slaPending, slaDelivered, slaDisputed, slaNa],
+    ['#F59E0B','#10B981','#EF4444','#E2E8F0']);
+
+  // Recent table
+  const recent = [...data].sort((a,b)=>b.id.localeCompare(a.id)).slice(0,8);
+  document.getElementById('dash-recent').innerHTML = recent.length
+    ? `<table><thead><tr><th>Ticket</th><th>DSAT Date</th><th>Specialist</th><th>Main Reason</th><th>Feedback</th></tr></thead>
+       <tbody>${recent.map(r=>`<tr>
+         <td><strong>#${escHtml(r.ticketId)}</strong></td>
+         <td>${fmtDate(r.dsatDate)}</td>
+         <td>${escHtml(r.specialistName)}</td>
+         <td>${reasonBadge(r.mainReason)}</td>
+         <td>${feedbackBadge(r.feedbackStatus)}</td>
+       </tr>`).join('')}</tbody></table>`
+    : '<div class="empty-state"><div class="icon">📭</div><p>No DSAT records yet.</p></div>';
+}
+
+function renderChart(canvasId, type, labels, dataArr, colors) {
+  if (chartInstances[canvasId]) { chartInstances[canvasId].destroy(); }
+  const ctx = document.getElementById(canvasId);
+  if (!ctx) return;
+  chartInstances[canvasId] = new Chart(ctx, {
+    type,
+    data: { labels, datasets:[{data:dataArr, backgroundColor:colors, borderWidth:2, borderColor:'#fff'}]},
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{position:'right',labels:{font:{size:11},padding:12}},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.raw}`}}}
+    }
+  });
+}
+
+// ══ RECORDS ═══════════════════════════════════════════════════════════════════
+function renderRecords(data) {
+  const filtered = applyCurrentFilters(data);
+  document.getElementById('records-count-label').textContent = `${filtered.length} record${filtered.length!==1?'s':''} found`;
+  const tbody = document.getElementById('records-tbody');
+  if (!filtered.length) {
+    tbody.innerHTML='<tr><td colspan="11"><div class="empty-state"><div class="icon">🔍</div><p>No records match your filters.</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = filtered.sort((a,b)=>b.id.localeCompare(a.id)).map(r => {
+    const edited = r.editedFlag==='TRUE'||r.editedFlag===true;
+    return `<tr class="${edited?'tr-edited':''}">
+      <td><strong>#${escHtml(r.ticketId)}</strong>${edited?'<br><span class="badge badge-edited">✏ Edited</span>':''}</td>
+      <td>${fmtDate(r.dsatDate)}</td>
+      <td>${escHtml(r.specialistName)}</td>
+      <td><small>${escHtml(r.supervisorName||'—')}</small></td>
+      <td>${reasonBadge(r.mainReason)}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.subReason)}">${escHtml(r.subReason)}</td>
+      <td>${yesnoBadge(r.isPreventable)}</td>
+      <td>${yesnoBadge(r.issueResolved)}</td>
+      <td>${feedbackBadge(r.feedbackStatus)}</td>
+      <td><small>${escHtml(r.submittedByName||'—')}</small></td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-secondary btn-sm" onclick="openDetail('${r.id}')">View</button>
+        ${isAdmin()?`<button class="btn btn-primary btn-sm" onclick="openEditModal('${r.id}')">Edit</button>`:''}
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function applyCurrentFilters(data) {
+  let d = [...data];
+  const from   = document.getElementById('filter-from')?.value;
+  const to     = document.getElementById('filter-to')?.value;
+  const reason = document.getElementById('filter-reason')?.value;
+  const sup    = document.getElementById('filter-supervisor')?.value;
+  const fb     = document.getElementById('filter-feedback')?.value;
+  if (from)   d = d.filter(r=>r.dsatDate>=from);
+  if (to)     d = d.filter(r=>r.dsatDate<=to);
+  if (reason) d = d.filter(r=>r.mainReason===reason);
+  if (sup)    d = d.filter(r=>r.supervisorName===sup);
+  if (fb)     d = d.filter(r=>r.feedbackStatus===fb);
+  return d;
+}
+
+function applyFilters()  { renderRecords(cachedData); }
+function clearFilters()  {
+  ['filter-from','filter-to','filter-reason','filter-supervisor','filter-feedback'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.value='';
+  });
+  renderRecords(cachedData);
+}
+
+function buildSupervisorFilter() {
+  const sups = [...new Set(cachedData.map(r=>r.supervisorName).filter(Boolean))].sort();
+  const sel = document.getElementById('filter-supervisor');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">All Supervisors</option>' + sups.map(s=>`<option>${escHtml(s)}</option>`).join('');
+}
+
+function exportCSV() {
+  const headers = ['id','analysisDate','dsatDate','ticketId','specialistName','specialistEmail',
+    'supervisorName','supervisorEmail','managerName','mainReason','subReason',
+    'isPreventable','supportingDetails','resolutionProvided','improvementOpportunities',
+    'issueResolved','correctProcessFollowed','submittedByName','submittedByEmail','submittedAt',
+    'editedFlag','lastEditedByName','lastEditedByEmail','lastEditedAt',
+    'feedbackStatus','supervisorFeedback','feedbackProvidedAt','disputeNotes','disputeReviewedBy','disputeReviewedAt'];
+  const rows = applyCurrentFilters(cachedData);
+  const csv  = [headers.join(','),...rows.map(r=>headers.map(h=>csvCell(r[h])).join(','))].join('\n');
+  const a    = document.createElement('a');
+  a.href     = 'data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download = `DSAT_Export_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+function csvCell(v) {
+  v = String(v===null||v===undefined?'':v);
+  return v.includes(',') || v.includes('"') || v.includes('\n')
+    ? '"'+v.replace(/"/g,'""')+'"' : v;
+}
+
+// ══ VIEW DETAIL ═══════════════════════════════════════════════════════════════
+function openDetail(id) {
+  const r = cachedData.find(x=>x.id===id);
+  if (!r) return;
+  const edited = r.editedFlag==='TRUE'||r.editedFlag===true;
+  document.getElementById('detail-modal-title').innerHTML =
+    `DSAT #${escHtml(r.ticketId)} ${edited?'<span class="badge badge-edited">✏ Edited by Admin</span>':''}`;
+  document.getElementById('detail-modal-body').innerHTML = `
+    <div class="detail-grid">
+      <div class="detail-field"><div class="df-label">Analysis Date</div><div class="df-value">${fmtDate(r.analysisDate)}</div></div>
+      <div class="detail-field"><div class="df-label">DSAT Date</div><div class="df-value">${fmtDate(r.dsatDate)}</div></div>
+      <div class="detail-field"><div class="df-label">Ticket ID</div><div class="df-value">#${escHtml(r.ticketId)}</div></div>
+      <div class="detail-field"><div class="df-label">Specialist</div><div class="df-value">${escHtml(r.specialistName)}<br><small style="color:#94A3B8">${escHtml(r.specialistEmail)}</small></div></div>
+      <div class="detail-field"><div class="df-label">Supervisor</div><div class="df-value">${escHtml(r.supervisorName||'—')}</div></div>
+      <div class="detail-field"><div class="df-label">Manager</div><div class="df-value">${escHtml(r.managerName||'—')}</div></div>
+      <div class="detail-field"><div class="df-label">Main Reason</div><div class="df-value">${reasonBadge(r.mainReason)}</div></div>
+      <div class="detail-field"><div class="df-label">Sub-Reason</div><div class="df-value">${escHtml(r.subReason)}</div></div>
+      <div class="detail-field"><div class="df-label">Preventable?</div><div class="df-value">${yesnoBadge(r.isPreventable)}</div></div>
+      <div class="detail-field"><div class="df-label">Issue Resolved?</div><div class="df-value">${yesnoBadge(r.issueResolved)}</div></div>
+      <div class="detail-field"><div class="df-label">Correct Process?</div><div class="df-value">${yesnoBadge(r.correctProcessFollowed)}</div></div>
+      <div class="detail-field"><div class="df-label">Feedback Status</div><div class="df-value">${feedbackBadge(r.feedbackStatus)}</div></div>
+      <div class="detail-field full"><div class="df-label">Supporting Details</div><div class="df-value">${escHtml(r.supportingDetails)}</div></div>
+      <div class="detail-field full"><div class="df-label">Resolution Provided</div><div class="df-value">${escHtml(r.resolutionProvided)}</div></div>
+      <div class="detail-field full"><div class="df-label">Improvement Opportunities & Next Steps</div><div class="df-value">${escHtml(r.improvementOpportunities)||'—'}</div></div>
+      ${r.supervisorFeedback?`<div class="detail-field full"><div class="df-label">Supervisor Feedback</div><div class="df-value">${escHtml(r.supervisorFeedback)}</div></div>`:''}
+      ${r.disputeNotes?`<div class="detail-field full"><div class="df-label">Dispute Notes</div><div class="df-value" style="color:#EF4444">${escHtml(r.disputeNotes)}</div></div>`:''}
+      ${edited?`<div class="detail-field full" style="background:#FEF3C7"><div class="df-label">Last Edited</div><div class="df-value">${escHtml(r.lastEditedByName)} · ${fmtDate(r.lastEditedAt)}</div></div>`:''}
+      <div class="detail-field"><div class="df-label">Submitted By</div><div class="df-value">${escHtml(r.submittedByName||r.submittedByEmail)}</div></div>
+      <div class="detail-field"><div class="df-label">Submitted At</div><div class="df-value">${fmtDate(r.submittedAt)}</div></div>
+    </div>`;
+  const footer = document.getElementById('detail-modal-footer');
+  footer.innerHTML = `<button class="btn btn-secondary" onclick="closeModal('detail-modal')">Close</button>
+    ${isAdmin()?`<button class="btn btn-primary" onclick="closeModal('detail-modal');openEditModal('${r.id}')">Edit Record</button>`:''}`;
+  openModal('detail-modal');
+}
+
+// ══ EDIT MODAL (admin only) ═══════════════════════════════════════════════════
+function openEditModal(id) {
+  if (!isAdmin()) { showToast('Only admins can edit records.','#EF4444'); return; }
+  const r = cachedData.find(x=>x.id===id);
+  if (!r) return;
+  document.getElementById('detail-modal-title').textContent = `Edit DSAT #${r.ticketId}`;
+  document.getElementById('detail-modal-body').innerHTML = `
+    <p style="font-size:.82rem;color:#F59E0B;background:#FEF3C7;padding:.75rem;border-radius:.5rem;margin-bottom:1rem">
+      ⚠️ Editing a submitted record will flag it with an audit trail (your name + timestamp).
+    </p>
+    <input type="hidden" id="edit-id" value="${escHtml(r.id)}">
+    <div class="form-grid">
+      <div class="form-group"><label>Analysis Date</label><input type="date" id="edit-analysis-date" value="${escHtml(r.analysisDate)}"></div>
+      <div class="form-group"><label>DSAT Date</label><input type="date" id="edit-dsat-date" value="${escHtml(r.dsatDate)}"></div>
+      <div class="form-group"><label>Ticket ID</label><input id="edit-ticket-id" value="${escHtml(r.ticketId)}"></div>
+      <div class="form-group"><label>Specialist Name</label><input id="edit-specialist-name" value="${escHtml(r.specialistName)}"></div>
+      <div class="form-group">
+        <label>Main Reason</label>
+        <select id="edit-main-reason" onchange="updateEditSubReasons()">
+          ${Object.keys(SUB_REASONS).map(k=>`<option${k===r.mainReason?' selected':''}>${escHtml(k)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Sub-Reason</label>
+        <select id="edit-sub-reason">
+          ${(SUB_REASONS[r.mainReason]||[]).map(s=>`<option${s===r.subReason?' selected':''}>${escHtml(s)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Preventable?</label>
+        <select id="edit-preventable"><option${r.isPreventable==='YES'?' selected':''}>YES</option><option${r.isPreventable==='NO'?' selected':''}>NO</option></select>
+      </div>
+      <div class="form-group">
+        <label>Issue Resolved?</label>
+        <select id="edit-resolved"><option${r.issueResolved==='YES'?' selected':''}>YES</option><option${r.issueResolved==='NO'?' selected':''}>NO</option></select>
+      </div>
+      <div class="form-group">
+        <label>Correct Process?</label>
+        <select id="edit-process"><option${r.correctProcessFollowed==='YES'?' selected':''}>YES</option><option${r.correctProcessFollowed==='NO'?' selected':''}>NO</option></select>
+      </div>
+      <div class="form-group full"><label>Supporting Details</label><textarea id="edit-supporting">${escHtml(r.supportingDetails)}</textarea></div>
+      <div class="form-group full"><label>Resolution Provided</label><textarea id="edit-resolution">${escHtml(r.resolutionProvided)}</textarea></div>
+      <div class="form-group full"><label>Improvement Opportunities</label><textarea id="edit-improvement">${escHtml(r.improvementOpportunities)}</textarea></div>
+    </div>`;
+  document.getElementById('detail-modal-footer').innerHTML = `
+    <button class="btn btn-secondary" onclick="closeModal('detail-modal')">Cancel</button>
+    <button class="btn btn-primary" onclick="saveEditRecord()">Save Changes</button>`;
+  openModal('detail-modal');
+}
+
+function updateEditSubReasons() {
+  const main = document.getElementById('edit-main-reason').value;
+  const sub  = document.getElementById('edit-sub-reason');
+  sub.innerHTML = (SUB_REASONS[main]||[]).map(s=>`<option>${escHtml(s)}</option>`).join('');
+}
+
+async function saveEditRecord() {
+  const record = {
+    id:                      document.getElementById('edit-id').value,
+    analysisDate:            document.getElementById('edit-analysis-date').value,
+    dsatDate:                document.getElementById('edit-dsat-date').value,
+    ticketId:                document.getElementById('edit-ticket-id').value,
+    specialistName:          document.getElementById('edit-specialist-name').value,
+    mainReason:              document.getElementById('edit-main-reason').value,
+    subReason:               document.getElementById('edit-sub-reason').value,
+    isPreventable:           document.getElementById('edit-preventable').value,
+    issueResolved:           document.getElementById('edit-resolved').value,
+    correctProcessFollowed:  document.getElementById('edit-process').value,
+    supportingDetails:       document.getElementById('edit-supporting').value,
+    resolutionProvided:      document.getElementById('edit-resolution').value,
+    improvementOpportunities:document.getElementById('edit-improvement').value
+  };
+  try {
+    await apiPost({action:'updateDSAT', record});
+    showToast('✅ Record updated with audit trail.');
+    closeModal('detail-modal');
+    const data = await apiFetch();
+    cachedData = data;
+    renderRecords(cachedData);
+  } catch(err) { showToast('❌ '+err.message,'#EF4444'); }
+}
+
+// ══ FEEDBACK QUEUE ════════════════════════════════════════════════════════════
+function renderQueue(data) {
+  const u = getUser();
+  let queue = data.filter(r=>r.mainReason==='Agent - Related' && r.feedbackStatus !== '');
+  if (!isAdmin()) {
+    queue = queue.filter(r=>r.supervisorEmail.toLowerCase()===(u?.email||'').toLowerCase());
+  }
+  queue.sort((a,b) => {
+    const order = {Disputed:0, Pending:1, 'Feedback Delivered':2};
+    return (order[a.feedbackStatus]??3) - (order[b.feedbackStatus]??3);
+  });
+
+  const pending   = queue.filter(r=>r.feedbackStatus==='Pending').length;
+  const disputed  = queue.filter(r=>r.feedbackStatus==='Disputed').length;
+  const delivered = queue.filter(r=>r.feedbackStatus==='Feedback Delivered').length;
+
+  const stats = document.getElementById('queue-stats');
+  stats.innerHTML = `
+    <div class="stat-card amber"><div class="stat-label">Pending Feedback</div><div class="stat-value">${pending}</div><div class="stat-sub">10-day SLA</div></div>
+    <div class="stat-card red"><div class="stat-label">Disputed</div><div class="stat-value">${disputed}</div><div class="stat-sub">Requires admin review</div></div>
+    <div class="stat-card green"><div class="stat-label">Feedback Delivered</div><div class="stat-value">${delivered}</div><div class="stat-sub">Completed</div></div>
+    <div class="stat-card sky"><div class="stat-label">Total (Agent-Related)</div><div class="stat-value">${queue.length}</div><div class="stat-sub">In your queue</div></div>`;
+
+  const list = document.getElementById('queue-list');
+  if (!queue.length) {
+    list.innerHTML='<div class="empty-state"><div class="icon">🎉</div><p>No Agent-Related DSATs in queue.</p></div>';
+    return;
+  }
+
+  list.innerHTML = queue.map(r => {
+    const daysLeft = slaDaysLeft(r.submittedAt);
+    const slaClass = daysLeft < 0 ? 'over' : daysLeft <= 3 ? 'warn' : 'ok';
+    const slaBarW  = daysLeft < 0 ? 100 : Math.max(0, Math.round((1-daysLeft/SLA_DAYS)*100));
+    const isDisp   = r.feedbackStatus==='Disputed';
+
+    return `<div class="queue-card ${isDisp?'disputed':''}">
+      <div class="queue-header">
+        <div>
+          <div class="queue-agent">
+            ${feedbackBadge(r.feedbackStatus)}
+            <span style="margin-left:.5rem">${escHtml(r.specialistName)}</span>
+            ${r.editedFlag==='TRUE'?'<span class="badge badge-edited" style="margin-left:.4rem">✏ Edited</span>':''}
+          </div>
+          <div class="queue-meta">Ticket #${escHtml(r.ticketId)} · DSAT Date: ${fmtDate(r.dsatDate)} · Sub: ${escHtml(r.subReason)}</div>
+        </div>
+        <div style="text-align:right;min-width:140px">
+          ${r.feedbackStatus==='Pending'?`
+            <div class="sla-text ${slaClass}">${daysLeft<0?'⚠ OVERDUE':'⏱ '+daysLeft+' day'+((daysLeft!==1)?'s':'')+' left'}</div>
+            <div class="sla-bar-wrap"><div class="sla-bar sla-${slaClass}" style="width:${slaBarW}%"></div></div>
+          `:''}
+        </div>
+      </div>
+      <div class="queue-detail">
+        <div class="queue-field"><strong>Supervisor</strong>${escHtml(r.supervisorName||'—')}</div>
+        <div class="queue-field"><strong>Manager</strong>${escHtml(r.managerName||'—')}</div>
+        <div class="queue-field"><strong>Submitted</strong>${fmtDate(r.submittedAt)}</div>
+        <div class="queue-field"><strong>Preventable?</strong>${yesnoBadge(r.isPreventable)}</div>
+      </div>
+      ${r.supportingDetails?`<div style="font-size:.82rem;color:#475569;background:#F8FAFC;border-radius:.5rem;padding:.75rem;margin-bottom:.75rem"><strong>Supporting Details:</strong> ${escHtml(r.supportingDetails)}</div>`:''}
+      ${r.supervisorFeedback?`<div style="font-size:.82rem;color:#065F46;background:#D1FAE5;border-radius:.5rem;padding:.75rem;margin-bottom:.75rem"><strong>Feedback Provided:</strong> ${escHtml(r.supervisorFeedback)}</div>`:''}
+      ${isDisp&&r.disputeNotes?`<div style="font-size:.82rem;color:#991B1B;background:#FEE2E2;border-radius:.5rem;padding:.75rem;margin-bottom:.75rem"><strong>Dispute Notes:</strong> ${escHtml(r.disputeNotes)}</div>`:''}
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <button class="btn btn-secondary btn-sm" onclick="openDetail('${r.id}')">View Full Record</button>
+        ${(r.feedbackStatus==='Pending' && (isSupervisor()))?`<button class="btn btn-success btn-sm" onclick="openFeedbackModal('${r.id}')">✍ Submit Feedback</button>`:''}
+        ${(r.feedbackStatus==='Disputed' && isAdmin())?`<button class="btn btn-warning btn-sm" onclick="openDisputeReview('${r.id}')">🔍 Review Dispute</button>`:''}
+        ${(r.feedbackStatus==='Feedback Delivered' && isSupervisor() && !isAdmin())?`<button class="btn btn-secondary btn-sm" onclick="openFeedbackModal('${r.id}')">Update Feedback</button>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function slaDaysLeft(submittedAt) {
+  if (!submittedAt) return SLA_DAYS;
+  const submitted = new Date(submittedAt);
+  const deadline  = new Date(submitted.getTime() + SLA_DAYS*24*60*60*1000);
+  return Math.ceil((deadline - new Date())/(24*60*60*1000));
+}
+
+// ── Feedback Modal ────────────────────────────────────────────────────────────
+function openFeedbackModal(id) {
+  document.getElementById('fb-dsat-id').value = id;
+  document.getElementById('fb-feedback').value = '';
+  document.getElementById('fb-status').value = 'Feedback Delivered';
+  document.getElementById('fb-dispute-notes').value = '';
+  document.getElementById('fb-dispute-wrap').style.display='none';
+  document.getElementById('fb-status').onchange = function() {
+    document.getElementById('fb-dispute-wrap').style.display = this.value==='Disputed' ? '' : 'none';
+  };
+  openModal('feedback-modal');
+}
+
+async function saveFeedback() {
+  const id       = document.getElementById('fb-dsat-id').value;
+  const feedback = document.getElementById('fb-feedback').value.trim();
+  const status   = document.getElementById('fb-status').value;
+  const dispute  = document.getElementById('fb-dispute-notes').value.trim();
+  if (!feedback) { showToast('Please provide feedback text.','#EF4444'); return; }
+  if (status==='Disputed' && !dispute) { showToast('Please explain the reason for dispute.','#EF4444'); return; }
+  try {
+    await apiPost({action:'submitFeedback', dsatId:id, feedback, status, disputeNotes:dispute});
+    showToast('✅ Feedback saved successfully!');
+    closeModal('feedback-modal');
+    const data = await apiFetch();
+    cachedData = data;
+    renderQueue(cachedData);
+    updateRoleUI();
+  } catch(err) { showToast('❌ '+err.message,'#EF4444'); }
+}
+
+// ── Dispute Review ────────────────────────────────────────────────────────────
+function openDisputeReview(id) {
+  const r = cachedData.find(x=>x.id===id);
+  if (!r) return;
+  document.getElementById('detail-modal-title').textContent = `🔍 Review Dispute — Ticket #${r.ticketId}`;
+  document.getElementById('detail-modal-body').innerHTML = `
+    <div style="background:#FEE2E2;border-radius:.5rem;padding:.85rem;margin-bottom:1rem;font-size:.85rem">
+      <strong>Dispute Notes from Supervisor:</strong><br>${escHtml(r.disputeNotes||'No notes provided')}
+    </div>
+    <div style="background:#FEF3C7;border-radius:.5rem;padding:.85rem;margin-bottom:1rem;font-size:.85rem">
+      <strong>Supervisor Feedback (as submitted):</strong><br>${escHtml(r.supervisorFeedback||'—')}
+    </div>
+    <input type="hidden" id="dispute-id" value="${r.id}">
+    <div class="form-group" style="margin-bottom:1rem">
+      <label>Admin Decision — Set New Status</label>
+      <select id="dispute-new-status">
+        <option value="Feedback Delivered">Approve — Mark as Feedback Delivered</option>
+        <option value="Pending">Return to Pending (supervisor re-submit)</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Admin Notes (optional — will be saved as supervisor feedback)</label>
+      <textarea id="dispute-admin-feedback" placeholder="Add admin review notes…">${escHtml(r.supervisorFeedback||'')}</textarea>
+    </div>`;
+  document.getElementById('detail-modal-footer').innerHTML = `
+    <button class="btn btn-secondary" onclick="closeModal('detail-modal')">Cancel</button>
+    <button class="btn btn-warning" onclick="saveDisputeReview()">Save Decision</button>`;
+  openModal('detail-modal');
+}
+
+async function saveDisputeReview() {
+  const id        = document.getElementById('dispute-id').value;
+  const newStatus = document.getElementById('dispute-new-status').value;
+  const feedback  = document.getElementById('dispute-admin-feedback').value;
+  try {
+    await apiPost({action:'disputeReview', dsatId:id, newStatus, record:{supervisorFeedback:feedback}});
+    showToast('✅ Dispute resolved.');
+    closeModal('detail-modal');
+    const data = await apiFetch();
+    cachedData = data;
+    renderQueue(cachedData);
+  } catch(err) { showToast('❌ '+err.message,'#EF4444'); }
+}
+
+// ══ ADMIN — ROLES ═════════════════════════════════════════════════════════════
+function renderRolesTable() {
+  const tbody = document.getElementById('roles-tbody');
+  if (!cachedRoles.length) {
+    tbody.innerHTML='<tr><td colspan="5"><div class="empty-state"><div class="icon">👤</div><p>No custom roles assigned yet.</p></div></td></tr>';
+    return;
+  }
+  const roleColors = {admin:'role-admin',supervisor:'role-supervisor',analyst:'role-analyst',viewer:'role-viewer'};
+  tbody.innerHTML = cachedRoles.map(r=>`
+    <tr>
+      <td>${escHtml(r.email)}</td>
+      <td><span class="role-badge ${roleColors[r.role]||'role-viewer'}">${escHtml(r.role)}</span></td>
+      <td>${escHtml(r.assignedBy||'—')}</td>
+      <td>${fmtDate(r.assignedDate)}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="removeRole('${escHtml(r.email)}')">Remove</button></td>
+    </tr>`).join('');
+}
+
+async function addRole() {
+  const email = document.getElementById('new-role-email').value.trim().toLowerCase();
+  const role  = document.getElementById('new-role-select').value;
+  if (!email || !email.includes('@')) { showToast('Enter a valid email.','#EF4444'); return; }
+  try {
+    await apiPost({action:'updateRoles', subAction:'add', targetEmail:email, role});
+    showToast('✅ Role assigned.');
+    document.getElementById('new-role-email').value='';
+    await loadRoles();
+  } catch(err) { showToast('❌ '+err.message,'#EF4444'); }
+}
+
+async function removeRole(email) {
+  if (!confirm(`Remove role for ${email}?`)) return;
+  try {
+    await apiPost({action:'updateRoles', subAction:'remove', targetEmail:email});
+    showToast('Role removed.');
+    await loadRoles();
+  } catch(err) { showToast('❌ '+err.message,'#EF4444'); }
+}
+
+// ══ ADMIN — HIERARCHY ════════════════════════════════════════════════════════
+function renderHierarchyTable() {
+  const q = (document.getElementById('hier-search')?.value||'').toLowerCase();
+  const data = q
+    ? cachedHierarchy.filter(h=>(h.agentName||'').toLowerCase().includes(q)||(h.agentEmail||'').toLowerCase().includes(q)||(h.supervisorName||'').toLowerCase().includes(q))
+    : cachedHierarchy;
+  const tbody = document.getElementById('hier-tbody');
+  if (!data.length) {
+    tbody.innerHTML='<tr><td colspan="7"><div class="empty-state"><div class="icon">🏗</div><p>No hierarchy data.</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.map(h=>`
+    <tr>
+      <td><strong>${escHtml(h.agentName)}</strong></td>
+      <td><small>${escHtml(h.agentEmail)}</small></td>
+      <td><span class="badge" style="background:#F1F5F9;color:#374151">${escHtml(h.role||'—')}</span></td>
+      <td>${escHtml(h.supervisorName||'—')}</td>
+      <td>${escHtml(h.managerName||'—')}</td>
+      <td>${escHtml(h.tenure||'—')}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-secondary btn-sm" onclick="editHierarchyRow(${JSON.stringify(h.agentEmail)})">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteHierarchyRow(${JSON.stringify(h.agentEmail)}, ${JSON.stringify(h.agentName)})">✕</button>
+      </td>
+    </tr>`).join('');
+}
+
+function openHierarchyModal(email) {
+  const r = email ? cachedHierarchy.find(h=>h.agentEmail===email) : null;
+  document.getElementById('hier-modal-title').textContent = r ? 'Edit Agent' : 'Add Agent';
+  document.getElementById('h-original-email').value = r?.agentEmail||'';
+  document.getElementById('h-agent-name').value  = r?.agentName||'';
+  document.getElementById('h-agent-email').value = r?.agentEmail||'';
+  document.getElementById('h-role').value        = r?.role||'Specialist';
+  document.getElementById('h-tenure').value      = r?.tenure||'';
+  document.getElementById('h-sup-name').value    = r?.supervisorName||'';
+  document.getElementById('h-sup-email').value   = r?.supervisorEmail||'';
+  document.getElementById('h-mgr-name').value    = r?.managerName||'';
+  document.getElementById('h-mgr-email').value   = r?.managerEmail||'';
+  openModal('hierarchy-modal');
+}
+
+function editHierarchyRow(email) { openHierarchyModal(email); }
+
+async function saveHierarchyRow() {
+  const originalEmail = document.getElementById('h-original-email').value;
+  const row = {
+    agentName:     document.getElementById('h-agent-name').value.trim(),
+    agentEmail:    document.getElementById('h-agent-email').value.trim().toLowerCase(),
+    role:          document.getElementById('h-role').value,
+    tenure:        document.getElementById('h-tenure').value.trim(),
+    supervisorName: document.getElementById('h-sup-name').value.trim(),
+    supervisorEmail:document.getElementById('h-sup-email').value.trim().toLowerCase(),
+    managerName:   document.getElementById('h-mgr-name').value.trim(),
+    managerEmail:  document.getElementById('h-mgr-email').value.trim().toLowerCase()
+  };
+  if (!row.agentName || !row.agentEmail) { showToast('Name and email are required.','#EF4444'); return; }
+  try {
+    if (originalEmail) {
+      await apiPost({action:'updateHierarchyRow', originalEmail, row});
+    } else {
+      await apiPost({action:'addHierarchyRow', row});
+    }
+    showToast('✅ Hierarchy updated.');
+    closeModal('hierarchy-modal');
+    const data = await apiFetch();
+    cachedData = data;
+    renderHierarchyTable();
+    populateSpecialistDropdown();
+  } catch(err) { showToast('❌ '+err.message,'#EF4444'); }
+}
+
+async function deleteHierarchyRow(email, name) {
+  if (!confirm(`Remove ${name} from hierarchy?`)) return;
+  try {
+    await apiPost({action:'deleteHierarchyRow', agentEmail:email});
+    showToast('Removed from hierarchy.');
+    const data = await apiFetch();
+    cachedData = data;
+    renderHierarchyTable();
+  } catch(err) { showToast('❌ '+err.message,'#EF4444'); }
+}
+
+function switchAdminTab(tab) {
+  document.querySelectorAll('.admin-tab').forEach((t,i)=>t.classList.toggle('active',['roles','hierarchy'][i]===tab));
+  document.getElementById('admin-roles').classList.toggle('active',tab==='roles');
+  document.getElementById('admin-hierarchy').classList.toggle('active',tab==='hierarchy');
+}
+
+// ══ HELPERS ═══════════════════════════════════════════════════════════════════
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function showLoading(show, msg='Loading…') {
+  const el = document.getElementById('loading-overlay');
+  document.getElementById('loading-msg').textContent = msg;
+  el.classList.toggle('show', show);
+}
+
+function showToast(msg, color='#10B981') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.background = color;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 3500);
+}
+
+function escHtml(s) {
+  return String(s===null||s===undefined?'':s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmtDate(d) {
+  if (!d) return '—';
+  const s = String(d).slice(0,10);
+  if (!s || s==='undefined') return '—';
+  const parts = s.split('-');
+  if (parts.length!==3) return s;
+  return `${parts[1]}/${parts[2]}/${parts[0]}`;
+}
+
+function reasonBadge(r) {
+  const map = {
+    'Agent - Related':'badge-agent','Process - Related':'badge-process',
+    'System - Related':'badge-system','Product - Related':'badge-product',
+    'Customer Expectations':'badge-customer'
+  };
+  return r ? `<span class="badge ${map[r]||'badge-na'}">${escHtml(r)}</span>` : '<span class="badge badge-na">—</span>';
+}
+
+function feedbackBadge(s) {
+  if (!s || s==='FALSE' || s==='' || s==='undefined') return '<span class="badge badge-na">N/A</span>';
+  const map = {'Pending':'badge-pending','Feedback Delivered':'badge-delivered','Disputed':'badge-disputed'};
+  return `<span class="badge ${map[s]||'badge-na'}">${escHtml(s)}</span>`;
+}
+
+function yesnoBadge(v) {
+  if (v==='YES') return '<span class="badge badge-yes">✓ YES</span>';
+  if (v==='NO')  return '<span class="badge badge-no">✗ NO</span>';
+  return '<span class="badge badge-na">—</span>';
+}
+
+// ══ BOOT ══════════════════════════════════════════════════════════════════════
+async function initApp() {
+  const u = getUser();
+  document.getElementById('user-name-nav').textContent = u?.name||'—';
+  // Set today's date as default for analysis date
+  document.getElementById('f-analysis-date').value = new Date().toISOString().slice(0,10);
+  updateRoleUI();
+  const data = await apiFetch();
+  cachedData = data;
+  updateRoleUI();
+  renderDashboard(data);
+  // Auto-refresh every 3 minutes
+  setInterval(async()=>{
+    const d = await apiFetch();
+    cachedData = d;
+    if (currentPage==='dashboard') renderDashboard(d);
+    else if (currentPage==='records') renderRecords(d);
+    else if (currentPage==='queue') renderQueue(d);
+    updateRoleUI();
+  }, 180000);
+}
+
+(function boot() {
+  const user = getUser();
+  if (!user) { showLogin(); }
+  else {
+    document.getElementById('login-overlay').classList.remove('show');
+    document.getElementById('navbar').style.display='flex';
+    document.getElementById('main-content').style.display='block';
+    initApp();
+  }
+})();
+
+// Close modals on overlay click
+document.querySelectorAll('.modal-overlay').forEach(overlay=>{
+  overlay.addEventListener('click', e=>{ if(e.target===overlay) overlay.classList.remove('open'); });
+});
+</script>
+</body>
+</html>
