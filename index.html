@@ -811,35 +811,56 @@ function updateRoleUI() {
 }
 
 // ══ SPECIALIST DROPDOWN ═══════════════════════════════════════════════════════
+let _specMatches = []; // holds current filtered matches so onclick can use index safely
+
 function populateSpecialistDropdown() {
-  // cache is ready — dropdown is filtered on input
+  // hierarchy is ready in cachedHierarchy — dropdown filters on keypress
 }
 
 function filterSpecialists(query) {
   const dd = document.getElementById('specialist-dropdown');
   if (!query || query.length < 1) { dd.classList.remove('open'); return; }
   const q = query.toLowerCase();
-  const matches = cachedHierarchy.filter(h =>
-    h.agentName && (h.agentName.toLowerCase().includes(q) || (h.agentEmail||'').toLowerCase().includes(q))
-  ).slice(0, 30);
+  _specMatches = cachedHierarchy.filter(h =>
+    h.agentName && (
+      h.agentName.toLowerCase().includes(q) ||
+      (h.agentEmail||'').toLowerCase().includes(q)
+    )
+  ).slice(0, 40);
 
-  if (!matches.length) { dd.innerHTML='<div class="spec-option" style="color:#94A3B8">No agents found</div>'; dd.classList.add('open'); return; }
-  dd.innerHTML = matches.map(h => `
-    <div class="spec-option" onclick="selectSpecialist(${JSON.stringify(h.agentName).replace(/'/g,"&#39;")},${JSON.stringify(h.agentEmail)},${JSON.stringify(h.supervisorName||'')},${JSON.stringify(h.supervisorEmail||'')},${JSON.stringify(h.managerName||'')})">
+  if (!_specMatches.length) {
+    dd.innerHTML = '<div class="spec-option" style="color:#94A3B8;cursor:default">No agents found</div>';
+    dd.classList.add('open');
+    return;
+  }
+
+  dd.innerHTML = _specMatches.map((h, i) => `
+    <div class="spec-option" data-idx="${i}">
       ${escHtml(h.agentName)}
       <div class="spec-meta">${escHtml(h.agentEmail||'')} · ${escHtml(h.role||'')} · Sup: ${escHtml(h.supervisorName||'—')}</div>
     </div>`).join('');
+
+  // Attach click listeners after rendering (avoids all quote-escaping issues)
+  dd.querySelectorAll('.spec-option[data-idx]').forEach(el => {
+    el.addEventListener('mousedown', e => {
+      e.preventDefault(); // prevent input blur before click fires
+      const idx = parseInt(el.getAttribute('data-idx'), 10);
+      selectSpecialist(_specMatches[idx]);
+    });
+  });
+
   dd.classList.add('open');
 }
 
-function selectSpecialist(name, email, supName, supEmail, mgrName) {
-  document.getElementById('f-specialist-search').value = name;
-  document.getElementById('f-specialist-name').value   = name;
-  document.getElementById('f-specialist-email').value  = email;
-  document.getElementById('f-supervisor-name').value   = supName || '—';
-  document.getElementById('f-manager-name').value      = mgrName || '—';
+function selectSpecialist(h) {
+  if (!h) return;
+  document.getElementById('f-specialist-search').value = h.agentName;
+  document.getElementById('f-specialist-name').value   = h.agentName;
+  document.getElementById('f-specialist-email').value  = h.agentEmail || '';
+  document.getElementById('f-supervisor-name').value   = h.supervisorName || '—';
+  document.getElementById('f-manager-name').value      = h.managerName   || '—';
   document.getElementById('specialist-dropdown').classList.remove('open');
-  if (supName) {
+  if (h.supervisorName) {
     document.getElementById('f-supervisor-name').classList.add('auto-filled');
     document.getElementById('f-manager-name').classList.add('auto-filled');
   }
