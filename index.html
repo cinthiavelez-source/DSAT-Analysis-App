@@ -1088,9 +1088,9 @@ function openDetail(id) {
       <div class="detail-field full"><div class="df-label">Improvement Opportunities & Next Steps</div><div class="df-value">${escHtml(r.improvementOpportunities)||'—'}</div></div>
       ${r.supervisorFeedback?`<div class="detail-field full"><div class="df-label">Supervisor Feedback</div><div class="df-value">${escHtml(r.supervisorFeedback)}</div></div>`:''}
       ${r.disputeNotes?`<div class="detail-field full"><div class="df-label">Dispute Notes</div><div class="df-value" style="color:#EF4444">${escHtml(r.disputeNotes)}</div></div>`:''}
-      ${edited?`<div class="detail-field full" style="background:#FEF3C7"><div class="df-label">Last Edited</div><div class="df-value">${escHtml(r.lastEditedByName)} · ${fmtDate(r.lastEditedAt)}</div></div>`:''}
+      ${edited?`<div class="detail-field full" style="background:#FEF3C7"><div class="df-label">Last Edited</div><div class="df-value">${escHtml(r.lastEditedByName)} · ${fmtDateTime(r.lastEditedAt)}</div></div>`:''}
       <div class="detail-field"><div class="df-label">Submitted By</div><div class="df-value">${escHtml(r.submittedByName||r.submittedByEmail)}</div></div>
-      <div class="detail-field"><div class="df-label">Submitted At</div><div class="df-value">${fmtDate(r.submittedAt)}</div></div>
+      <div class="detail-field"><div class="df-label">Submitted At</div><div class="df-value">${fmtDateTime(r.submittedAt)}</div></div>
     </div>`;
   const footer = document.getElementById('detail-modal-footer');
   footer.innerHTML = `<button class="btn btn-secondary" onclick="closeModal('detail-modal')">Close</button>
@@ -1235,7 +1235,7 @@ function renderQueue(data) {
       <div class="queue-detail">
         <div class="queue-field"><strong>Supervisor</strong>${escHtml(r.supervisorName||'—')}</div>
         <div class="queue-field"><strong>Manager</strong>${escHtml(r.managerName||'—')}</div>
-        <div class="queue-field"><strong>Submitted</strong>${fmtDate(r.submittedAt)}</div>
+        <div class="queue-field"><strong>Submitted</strong>${fmtDateTime(r.submittedAt)}</div>
         <div class="queue-field"><strong>Preventable?</strong>${yesnoBadge(r.isPreventable)}</div>
       </div>
       ${r.supportingDetails?`<div style="font-size:.82rem;color:#475569;background:#F8FAFC;border-radius:.5rem;padding:.75rem;margin-bottom:.75rem"><strong>Supporting Details:</strong> ${escHtml(r.supportingDetails)}</div>`:''}
@@ -1346,7 +1346,7 @@ function renderRolesTable() {
       <td>${escHtml(r.email)}</td>
       <td><span class="role-badge ${roleColors[r.role]||'role-viewer'}">${escHtml(r.role)}</span></td>
       <td>${escHtml(r.assignedBy||'—')}</td>
-      <td>${fmtDate(r.assignedDate)}</td>
+      <td>${fmtDateTime(r.assignedDate)}</td>
       <td><button class="btn btn-danger btn-sm" onclick="removeRole('${escHtml(r.email)}')">Remove</button></td>
     </tr>`).join('');
 }
@@ -1490,6 +1490,19 @@ function fmtDate(d) {
   const parts = s.split('-');
   if (parts.length!==3) return s;
   return `${parts[1]}/${parts[2]}/${parts[0]}`;
+}
+
+function fmtDateTime(d) {
+  if (!d) return '—';
+  const s = String(d);
+  if (!s || s==='undefined') return '—';
+  try {
+    const dt = new Date(s);
+    if (isNaN(dt.getTime())) return fmtDate(s);
+    const date = dt.toLocaleDateString('en-US', {month:'2-digit', day:'2-digit', year:'numeric'});
+    const time = dt.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:true});
+    return `${date} ${time}`;
+  } catch(e) { return fmtDate(s); }
 }
 
 function reasonBadge(r) {
