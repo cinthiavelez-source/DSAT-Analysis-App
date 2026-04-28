@@ -525,6 +525,13 @@ tr:hover td{background:#FAFAFA}
             <option>Disputed</option>
           </select>
         </div>
+        <div class="form-group"><label>Week</label><select id="filter-week"><option value="">All Weeks</option></select></div>
+        <div class="form-group"><label>Month</label><select id="filter-month"><option value="">All Months</option></select></div>
+        <div class="form-group"><label>Channel</label><select id="filter-channel"><option value="">All Channels</option></select></div>
+        <div class="form-group"><label>Store</label><select id="filter-store"><option value="">All Stores</option></select></div>
+        <div class="form-group"><label>Lifespan Segment</label><select id="filter-lifespan"><option value="">All Segments</option></select></div>
+        <div class="form-group"><label>LTR</label><select id="filter-ltr"><option value="">All LTR</option></select></div>
+        <div class="form-group"><label>Contact Reason</label><select id="filter-contact-reason"><option value="">All Reasons</option></select></div>
         <div class="filter-actions">
           <button class="btn btn-primary btn-sm" onclick="applyFilters()">Apply</button>
           <button class="btn btn-secondary btn-sm" onclick="clearFilters()">Clear</button>
@@ -532,9 +539,9 @@ tr:hover td{background:#FAFAFA}
       </div>
       <div class="table-wrap"><table id="records-table">
         <thead><tr>
-          <th>Ticket</th><th>DSAT Date</th><th>Specialist</th><th>Supervisor</th>
-          <th>Main Reason</th><th>Sub-Reason</th><th>Preventable</th>
-          <th>Resolved</th><th>Feedback</th><th>Submitted By</th><th>Actions</th>
+          <th>Ticket</th><th>DSAT Date</th><th>Week</th><th>Specialist</th><th>Supervisor</th>
+          <th>Main Reason</th><th>Sub-Reason</th><th>Channel</th><th>Store</th><th>LTR</th>
+          <th>Preventable</th><th>Resolved</th><th>Feedback</th><th>Submitted By</th><th>Actions</th>
         </tr></thead>
         <tbody id="records-tbody"></tbody>
       </table></div>
@@ -564,6 +571,7 @@ tr:hover td{background:#FAFAFA}
     <div class="admin-tabs">
       <button class="admin-tab active" onclick="switchAdminTab('roles')">👤 User Roles</button>
       <button class="admin-tab" onclick="switchAdminTab('hierarchy')">🏗 Hierarchy</button>
+      <button class="admin-tab" onclick="switchAdminTab('import')">📥 Import Data</button>
     </div>
 
     <!-- Roles Section -->
@@ -601,6 +609,78 @@ tr:hover td{background:#FAFAFA}
         </table></div>
       </div>
     </div>
+
+    <!-- Import Data Section -->
+    <div class="admin-section" id="admin-import">
+
+      <!-- Format guide -->
+      <div class="card">
+        <div class="card-title">📋 Expected CSV Format</div>
+        <p style="font-size:.875rem;color:#475569;margin-bottom:1rem">
+          Upload a CSV file exported from your BI tool. The file must contain a <strong>TICKET_ID</strong> column
+          to match existing DSAT records. All other columns are optional — unmatched tickets are skipped.
+        </p>
+        <div style="overflow-x:auto">
+          <table style="font-size:.8rem;width:auto">
+            <thead>
+              <tr>
+                <th>CSV Column Name</th>
+                <th>Field in App</th>
+                <th>Example Value</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td><code>TICKET_ID</code></td><td>Ticket ID</td><td>1733203</td><td style="color:#4F46E5;font-weight:600">Required — used to match records</td></tr>
+              <tr><td><code>CHANNEL</code> or <code>Channel</code></td><td>Channel</td><td>Email / Chat / Phone</td><td>Contact channel</td></tr>
+              <tr><td><code>CUSTOMER_EMAIL</code></td><td>Customer Email</td><td>user@example.com</td><td></td></tr>
+              <tr><td><code>Contact Reason</code> or <code>CONTACT_REASON</code></td><td>Contact Reason</td><td>Delivery Issue</td><td></td></tr>
+              <tr><td><code>LIFESPAN_SEGMENT_AT_TICKET</code></td><td>Lifespan Segment</td><td>0-4 weeks / 3-6 months</td><td></td></tr>
+              <tr><td><code>LTR</code></td><td>LTR</td><td>Promoter / Passive / Detractor</td><td>Text sentiment segment</td></tr>
+              <tr><td><code>STORE</code> or <code>Store</code></td><td>Store</td><td>New York Main / LA West</td><td></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Upload card -->
+      <div class="card">
+        <div class="card-title">📥 Upload Weekly Dataset</div>
+
+        <div style="display:flex;flex-direction:column;gap:1rem">
+
+          <!-- File picker -->
+          <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+            <label for="enrich-file-input" style="flex:none;font-size:.875rem;font-weight:600;color:#374151">Select CSV file:</label>
+            <input type="file" id="enrich-file-input" accept=".csv,text/csv"
+              style="flex:1;min-width:220px;border:1.5px dashed #CBD5E1;background:#F8FAFC;padding:.5rem .75rem;border-radius:.5rem;cursor:pointer"
+              onchange="previewEnrichCSV(this)">
+          </div>
+
+          <!-- Parse status / summary -->
+          <div id="enrich-parse-status" style="display:none;font-size:.85rem;color:#475569;padding:.5rem .75rem;background:#F1F5F9;border-radius:.5rem"></div>
+
+          <!-- Preview table (first 10 rows) -->
+          <div id="enrich-preview-wrap" style="display:none">
+            <div style="font-size:.8rem;font-weight:600;color:#64748B;margin-bottom:.5rem">Preview (first 10 rows)</div>
+            <div class="table-wrap" id="enrich-preview-table"></div>
+          </div>
+
+          <!-- Action row -->
+          <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-primary" id="enrich-upload-btn" onclick="importEnrichmentCSV()" disabled>
+              ⬆️ Upload &amp; Enrich Records
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="clearEnrichImport()">✕ Clear</button>
+            <span id="enrich-upload-status" style="font-size:.85rem;color:#64748B"></span>
+          </div>
+
+          <!-- Last import info -->
+          <div id="enrich-last-import" style="display:none;font-size:.8rem;color:#94A3B8;border-top:1px solid #F1F5F9;padding-top:.75rem"></div>
+        </div>
+      </div>
+
+    </div><!-- /admin-import -->
   </div>
 
   <!-- ── ANALYTICS ─────────────────────────────────────────────────────────── -->
@@ -973,8 +1053,9 @@ async function loadRoles() {
 }
 
 function normalizeRow(r) {
+  const ad = String(r.analysisDate||'');
   return {
-    id: String(r.id||''), analysisDate: String(r.analysisDate||''),
+    id: String(r.id||''), analysisDate: ad,
     dsatDate: String(r.dsatDate||''), ticketId: String(r.ticketId||''),
     specialistName: String(r.specialistName||''), specialistEmail: String(r.specialistEmail||''),
     supervisorName: String(r.supervisorName||''), supervisorEmail: String(r.supervisorEmail||''),
@@ -990,8 +1071,34 @@ function normalizeRow(r) {
     lastEditedByEmail: String(r.lastEditedByEmail||''), lastEditedAt: String(r.lastEditedAt||''),
     feedbackStatus: String(r.feedbackStatus||''), supervisorFeedback: String(r.supervisorFeedback||''),
     feedbackProvidedAt: String(r.feedbackProvidedAt||''), disputeNotes: String(r.disputeNotes||''),
-    disputeReviewedBy: String(r.disputeReviewedBy||''), disputeReviewedAt: String(r.disputeReviewedAt||'')
+    disputeReviewedBy: String(r.disputeReviewedBy||''), disputeReviewedAt: String(r.disputeReviewedAt||''),
+    // Enrichment fields (from weekly CSV upload, joined by ticketId)
+    channel:         String(r.channel||''),
+    customerEmail:   String(r.customerEmail||''),
+    contactReason:   String(r.contactReason||''),
+    lifespanSegment: String(r.lifespanSegment||''),
+    ltr:             String(r.ltr||''),
+    store:           String(r.store||''),
+    // Computed fields
+    analysisWeek:  calcWeek(ad),
+    analysisMonth: calcMonth(ad)
   };
+}
+
+function calcWeek(dateStr) {
+  if (!dateStr || dateStr.length < 8) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d)) return '';
+  const jan1 = new Date(d.getFullYear(), 0, 1);
+  const week = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
+  return `W${String(week).padStart(2,'0')} ${d.getFullYear()}`;
+}
+
+function calcMonth(dateStr) {
+  if (!dateStr || dateStr.length < 7) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d)) return '';
+  return d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
 }
 
 // ══ NAVIGATION ════════════════════════════════════════════════════════════════
@@ -1455,6 +1562,74 @@ function renderDashboard(data) {
     [slaPending, slaDelivered, slaDisputed, slaNa],
     ['#F59E0B','#10B981','#EF4444','#E2E8F0']);
 
+  // ── Enrichment KPIs (only shown when enrichment data exists) ──
+  const enriched = data.filter(r => r.channel || r.store || r.ltr);
+  if (enriched.length) {
+    // LTR breakdown
+    const ltrCounts = {};
+    enriched.forEach(r => { if (r.ltr) ltrCounts[r.ltr] = (ltrCounts[r.ltr]||0)+1; });
+    // Top stores
+    const storeCounts = {};
+    enriched.forEach(r => { if (r.store) storeCounts[r.store] = (storeCounts[r.store]||0)+1; });
+    const topStores = Object.entries(storeCounts).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    // Lifespan segments
+    const segCounts = {};
+    enriched.forEach(r => { if (r.lifespanSegment) segCounts[r.lifespanSegment] = (segCounts[r.lifespanSegment]||0)+1; });
+    // Contact reasons
+    const crCounts = {};
+    enriched.forEach(r => { if (r.contactReason) crCounts[r.contactReason] = (crCounts[r.contactReason]||0)+1; });
+    const topCR = Object.entries(crCounts).sort((a,b)=>b[1]-a[1]).slice(0,6);
+
+    // Add enrichment section to page if not already there
+    let enrichSection = document.getElementById('dash-enrichment-section');
+    if (!enrichSection) {
+      enrichSection = document.createElement('div');
+      enrichSection.id = 'dash-enrichment-section';
+      document.getElementById('dash-recent').parentElement.after(enrichSection);
+    }
+    enrichSection.innerHTML = `
+      <div class="card" style="margin-top:1.25rem">
+        <div class="card-title">📊 Enrichment Insights <small style="font-weight:400;color:#64748B;font-size:.8rem">${enriched.length} of ${data.length} records enriched</small></div>
+        <div class="charts-grid">
+          <div class="chart-card"><div class="chart-title">LTR Breakdown</div><div class="chart-wrap"><canvas id="chart-ltr"></canvas></div></div>
+          <div class="chart-card"><div class="chart-title">Top Stores by DSAT</div><div class="chart-wrap"><canvas id="chart-stores"></canvas></div></div>
+          <div class="chart-card"><div class="chart-title">Lifespan Segments</div><div class="chart-wrap"><canvas id="chart-segments"></canvas></div></div>
+          <div class="chart-card"><div class="chart-title">Top Contact Reasons</div><div class="chart-wrap"><canvas id="chart-contact-reasons"></canvas></div></div>
+        </div>
+      </div>`;
+
+    const ltrColors = {'promoter':'#10B981','passive':'#F59E0B','detractor':'#EF4444'};
+    renderChart('chart-ltr','doughnut',
+      Object.keys(ltrCounts),
+      Object.values(ltrCounts),
+      Object.keys(ltrCounts).map(k=>{
+        const v=k.toLowerCase();
+        return v.includes('promot')?'#10B981':v.includes('passive')?'#F59E0B':'#EF4444';
+      })
+    );
+    renderChart('chart-stores','bar',
+      topStores.map(([s])=>s), topStores.map(([,c])=>c),
+      topStores.map(()=>'#4F46E5')
+    );
+    if (chartInstances['chart-stores']) {
+      chartInstances['chart-stores'].options.plugins.legend={display:false};
+      chartInstances['chart-stores'].update();
+    }
+    renderChart('chart-segments','doughnut',
+      Object.keys(segCounts), Object.values(segCounts),
+      ['#7C3AED','#4F46E5','#0EA5E9','#10B981','#F59E0B','#EF4444']
+    );
+    renderChart('chart-contact-reasons','bar',
+      topCR.map(([r])=>r.length>25?r.slice(0,25)+'…':r),
+      topCR.map(([,c])=>c),
+      topCR.map(()=>'#7C3AED')
+    );
+    if (chartInstances['chart-contact-reasons']) {
+      chartInstances['chart-contact-reasons'].options.plugins.legend={display:false};
+      chartInstances['chart-contact-reasons'].update();
+    }
+  }
+
   // Recent table
   const recent = [...data].sort((a,b)=>b.id.localeCompare(a.id)).slice(0,8);
   document.getElementById('dash-recent').innerHTML = recent.length
@@ -1526,10 +1701,14 @@ function renderRecords(data) {
     return `<tr class="${edited?'tr-edited':''}">
       <td><strong>#${escHtml(r.ticketId)}</strong>${edited?'<br><span class="badge badge-edited">✏ Edited</span>':''}</td>
       <td>${fmtDate(r.dsatDate)}</td>
+      <td><small style="color:#64748B">${escHtml(r.analysisWeek||'—')}</small></td>
       <td>${escHtml(r.specialistName)}</td>
       <td><small>${escHtml(r.supervisorName||'—')}</small></td>
       <td>${reasonBadge(r.mainReason)}</td>
-      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.subReason)}">${escHtml(r.subReason)}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.subReason)}">${escHtml(r.subReason)}</td>
+      <td><small>${escHtml(r.channel||'—')}</small></td>
+      <td><small>${escHtml(r.store||'—')}</small></td>
+      <td>${r.ltr?`<span class="badge ${ltrBadgeClass(r.ltr)}">${escHtml(r.ltr)}</span>`:'<span class="badge badge-na">—</span>'}</td>
       <td>${yesnoBadge(r.isPreventable)}</td>
       <td>${yesnoBadge(r.issueResolved)}</td>
       <td>${feedbackBadge(r.feedbackStatus)}</td>
@@ -1544,49 +1723,76 @@ function renderRecords(data) {
 
 function applyCurrentFilters(data) {
   let d = [...data];
-  const from   = document.getElementById('filter-from')?.value;
-  const to     = document.getElementById('filter-to')?.value;
-  const reason = document.getElementById('filter-reason')?.value;
-  const sup    = document.getElementById('filter-supervisor')?.value;
-  const fb     = document.getElementById('filter-feedback')?.value;
-  if (from)   d = d.filter(r=>r.dsatDate>=from);
-  if (to)     d = d.filter(r=>r.dsatDate<=to);
-  if (reason) d = d.filter(r=>r.mainReason===reason);
-  if (sup)    d = d.filter(r=>r.supervisorName===sup);
-  if (fb)     d = d.filter(r=>r.feedbackStatus===fb);
+  const from    = document.getElementById('filter-from')?.value;
+  const to      = document.getElementById('filter-to')?.value;
+  const reason  = document.getElementById('filter-reason')?.value;
+  const sup     = document.getElementById('filter-supervisor')?.value;
+  const fb      = document.getElementById('filter-feedback')?.value;
+  const week    = document.getElementById('filter-week')?.value;
+  const month   = document.getElementById('filter-month')?.value;
+  const channel = document.getElementById('filter-channel')?.value;
+  const store   = document.getElementById('filter-store')?.value;
+  const lifespan= document.getElementById('filter-lifespan')?.value;
+  const ltr     = document.getElementById('filter-ltr')?.value;
+  const contRsn = document.getElementById('filter-contact-reason')?.value;
+  if (from)     d = d.filter(r=>r.dsatDate>=from);
+  if (to)       d = d.filter(r=>r.dsatDate<=to);
+  if (reason)   d = d.filter(r=>r.mainReason===reason);
+  if (sup)      d = d.filter(r=>r.supervisorName===sup);
+  if (fb)       d = d.filter(r=>r.feedbackStatus===fb);
+  if (week)     d = d.filter(r=>r.analysisWeek===week);
+  if (month)    d = d.filter(r=>r.analysisMonth===month);
+  if (channel)  d = d.filter(r=>r.channel===channel);
+  if (store)    d = d.filter(r=>r.store===store);
+  if (lifespan) d = d.filter(r=>r.lifespanSegment===lifespan);
+  if (ltr)      d = d.filter(r=>r.ltr===ltr);
+  if (contRsn)  d = d.filter(r=>r.contactReason===contRsn);
   return d;
 }
 
 function applyFilters()  { renderRecords(cachedData); }
 function clearFilters()  {
-  ['filter-from','filter-to','filter-reason','filter-supervisor','filter-feedback'].forEach(id=>{
+  ['filter-from','filter-to','filter-reason','filter-supervisor','filter-feedback',
+   'filter-week','filter-month','filter-channel','filter-store','filter-lifespan',
+   'filter-ltr','filter-contact-reason'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
   });
   renderRecords(cachedData);
 }
 
 function buildSupervisorFilter() {
-  const sups = [...new Set(cachedData.map(r=>r.supervisorName).filter(Boolean))].sort();
-  const mgrs = [...new Set(cachedData.map(r=>r.managerName).filter(Boolean))].sort();
+  const sups     = [...new Set(cachedData.map(r=>r.supervisorName).filter(Boolean))].sort();
+  const mgrs     = [...new Set(cachedData.map(r=>r.managerName).filter(Boolean))].sort();
+  const weeks    = [...new Set(cachedData.map(r=>r.analysisWeek).filter(Boolean))].sort();
+  const months   = [...new Set(cachedData.map(r=>r.analysisMonth).filter(Boolean))];
+  const channels = [...new Set(cachedData.map(r=>r.channel).filter(Boolean))].sort();
+  const stores   = [...new Set(cachedData.map(r=>r.store).filter(Boolean))].sort();
+  const segments = [...new Set(cachedData.map(r=>r.lifespanSegment).filter(Boolean))].sort();
+  const ltrs     = [...new Set(cachedData.map(r=>r.ltr).filter(Boolean))].sort();
+  const contRsns = [...new Set(cachedData.map(r=>r.contactReason).filter(Boolean))].sort();
+
+  function fill(id, opts, allLabel) {
+    const el = document.getElementById(id); if (!el) return;
+    const prev = el.value;
+    el.innerHTML = `<option value="">${allLabel}</option>` +
+      opts.map(o=>`<option${o===prev?' selected':''}>${escHtml(o)}</option>`).join('');
+  }
+
   // Records page
-  const recSup = document.getElementById('filter-supervisor');
-  if (recSup) recSup.innerHTML = '<option value="">All Supervisors</option>' + sups.map(s=>`<option>${escHtml(s)}</option>`).join('');
-  // Analytics page (called lazily via buildAnalyticsFilters too)
-  const anSup = document.getElementById('analytics-supervisor');
-  if (anSup) anSup.innerHTML = '<option value="">All Supervisors</option>' + sups.map(s=>`<option>${escHtml(s)}</option>`).join('');
-  const anMgr = document.getElementById('analytics-manager');
-  if (anMgr) anMgr.innerHTML = '<option value="">All Managers</option>'    + mgrs.map(m=>`<option>${escHtml(m)}</option>`).join('');
-  // Dashboard filter dropdowns
-  const dashSup = document.getElementById('dash-filter-supervisor');
-  if (dashSup) {
-    const prev = dashSup.value;
-    dashSup.innerHTML = '<option value="">All Supervisors</option>' + sups.map(s=>`<option${s===prev?' selected':''}>${escHtml(s)}</option>`).join('');
-  }
-  const dashMgr = document.getElementById('dash-filter-manager');
-  if (dashMgr) {
-    const prev = dashMgr.value;
-    dashMgr.innerHTML = '<option value="">All Managers</option>' + mgrs.map(m=>`<option${m===prev?' selected':''}>${escHtml(m)}</option>`).join('');
-  }
+  fill('filter-supervisor',    sups,     'All Supervisors');
+  fill('filter-week',          weeks,    'All Weeks');
+  fill('filter-month',         months,   'All Months');
+  fill('filter-channel',       channels, 'All Channels');
+  fill('filter-store',         stores,   'All Stores');
+  fill('filter-lifespan',      segments, 'All Segments');
+  fill('filter-ltr',           ltrs,     'All LTR');
+  fill('filter-contact-reason',contRsns, 'All Reasons');
+  // Analytics
+  fill('analytics-supervisor', sups, 'All Supervisors');
+  fill('analytics-manager',    mgrs, 'All Managers');
+  // Dashboard
+  fill('dash-filter-supervisor', sups, 'All Supervisors');
+  fill('dash-filter-manager',    mgrs, 'All Managers');
 }
 
 function buildAnalyticsFilters() {
@@ -1643,6 +1849,20 @@ function openDetail(id) {
       ${edited?`<div class="detail-field full" style="background:#FEF3C7"><div class="df-label">Last Edited</div><div class="df-value">${escHtml(r.lastEditedByName)} · ${fmtDateTime(r.lastEditedAt)}</div></div>`:''}
       <div class="detail-field"><div class="df-label">Submitted By</div><div class="df-value">${escHtml(r.submittedByName||r.submittedByEmail)}</div></div>
       <div class="detail-field"><div class="df-label">Submitted At</div><div class="df-value">${fmtDateTime(r.submittedAt)}</div></div>
+      ${(r.channel||r.store||r.ltr||r.lifespanSegment||r.contactReason||r.customerEmail)?`
+      <div class="detail-field full" style="background:#F0F9FF;border-top:2px solid #BAE6FD;margin-top:.5rem;padding-top:.75rem">
+        <div class="df-label" style="color:#0369A1">📊 Enrichment Data (from weekly upload)</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.75rem;margin-top:.5rem">
+          ${r.analysisWeek?`<div><div class="df-label">Week</div><div class="df-value">${escHtml(r.analysisWeek)}</div></div>`:''}
+          ${r.analysisMonth?`<div><div class="df-label">Month</div><div class="df-value">${escHtml(r.analysisMonth)}</div></div>`:''}
+          ${r.channel?`<div><div class="df-label">Channel</div><div class="df-value">${escHtml(r.channel)}</div></div>`:''}
+          ${r.store?`<div><div class="df-label">Store</div><div class="df-value">${escHtml(r.store)}</div></div>`:''}
+          ${r.ltr?`<div><div class="df-label">LTR</div><div class="df-value"><span class="badge ${ltrBadgeClass(r.ltr)}">${escHtml(r.ltr)}</span></div></div>`:''}
+          ${r.lifespanSegment?`<div><div class="df-label">Lifespan Segment</div><div class="df-value">${escHtml(r.lifespanSegment)}</div></div>`:''}
+          ${r.contactReason?`<div><div class="df-label">Contact Reason</div><div class="df-value">${escHtml(r.contactReason)}</div></div>`:''}
+          ${r.customerEmail?`<div><div class="df-label">Customer Email</div><div class="df-value"><small>${escHtml(r.customerEmail)}</small></div></div>`:''}
+        </div>
+      </div>`:''}
     </div>`;
   const footer = document.getElementById('detail-modal-footer');
   footer.innerHTML = `<button class="btn btn-secondary" onclick="closeModal('detail-modal')">Close</button>
@@ -2085,9 +2305,168 @@ async function deleteHierarchyRow(email, name) {
 }
 
 function switchAdminTab(tab) {
-  document.querySelectorAll('.admin-tab').forEach((t,i)=>t.classList.toggle('active',['roles','hierarchy'][i]===tab));
-  document.getElementById('admin-roles').classList.toggle('active',tab==='roles');
-  document.getElementById('admin-hierarchy').classList.toggle('active',tab==='hierarchy');
+  const tabs = ['roles','hierarchy','import'];
+  document.querySelectorAll('.admin-tab').forEach((t,i)=>t.classList.toggle('active', tabs[i]===tab));
+  document.getElementById('admin-roles').classList.toggle('active',     tab==='roles');
+  document.getElementById('admin-hierarchy').classList.toggle('active', tab==='hierarchy');
+  document.getElementById('admin-import').classList.toggle('active',    tab==='import');
+}
+
+// ── CSV ENRICHMENT IMPORT ───────────────────────────────────────────────────
+
+let parsedEnrichRows = [];   // holds parsed CSV rows until user confirms upload
+
+function parseCSV(text) {
+  // Split into lines, handle \r\n and \n
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  const result = [];
+  if (!lines.length) return result;
+
+  // Parse a single CSV line respecting quoted fields
+  function parseLine(line) {
+    const fields = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (inQ) {
+        if (c === '"' && line[i+1] === '"') { cur += '"'; i++; }
+        else if (c === '"')                 { inQ = false; }
+        else                                { cur += c; }
+      } else {
+        if (c === '"')       { inQ = true; }
+        else if (c === ',')  { fields.push(cur); cur = ''; }
+        else                 { cur += c; }
+      }
+    }
+    fields.push(cur);
+    return fields;
+  }
+
+  // Header normalisation — map raw header -> canonical field name
+  const rawHeaders = parseLine(lines[0]).map(h => h.trim());
+  function normHeader(h) {
+    const u = h.toUpperCase().replace(/[\s_-]+/g,'_');
+    if (u === 'TICKET_ID')                         return 'ticketId';
+    if (u === 'CHANNEL')                           return 'channel';
+    if (u === 'CUSTOMER_EMAIL')                    return 'customerEmail';
+    if (u === 'CONTACT_REASON' || u === 'CONTACTREASON') return 'contactReason';
+    if (u === 'LIFESPAN_SEGMENT_AT_TICKET' || u === 'LIFESPAN_SEGMENT') return 'lifespanSegment';
+    if (u === 'LTR')                               return 'ltr';
+    if (u === 'STORE')                             return 'store';
+    return null;  // unrecognised — skip
+  }
+  const headers = rawHeaders.map(normHeader);
+  const hasTicketId = headers.includes('ticketId');
+  if (!hasTicketId) return { error: 'Column TICKET_ID not found. Please check your file.' };
+
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const fields = parseLine(line);
+    const row = {};
+    headers.forEach((h, idx) => {
+      if (h) row[h] = (fields[idx] || '').trim();
+    });
+    if (row.ticketId) result.push(row);
+  }
+  return result;
+}
+
+function previewEnrichCSV(input) {
+  parsedEnrichRows = [];
+  const uploadBtn    = document.getElementById('enrich-upload-btn');
+  const statusEl     = document.getElementById('enrich-parse-status');
+  const previewWrap  = document.getElementById('enrich-preview-wrap');
+  const previewTable = document.getElementById('enrich-preview-table');
+  uploadBtn.disabled = true;
+  statusEl.style.display = 'none';
+  previewWrap.style.display = 'none';
+
+  const file = input.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const result = parseCSV(e.target.result);
+    if (result && result.error) {
+      statusEl.textContent = '❌ ' + result.error;
+      statusEl.style.color = '#EF4444';
+      statusEl.style.display = 'block';
+      return;
+    }
+    parsedEnrichRows = result;
+    if (!parsedEnrichRows.length) {
+      statusEl.textContent = '⚠️ No valid rows found in the file.';
+      statusEl.style.color = '#F59E0B';
+      statusEl.style.display = 'block';
+      return;
+    }
+
+    statusEl.textContent = `✅ Parsed ${parsedEnrichRows.length.toLocaleString()} rows successfully.`;
+    statusEl.style.color = '#059669';
+    statusEl.style.display = 'block';
+    uploadBtn.disabled = false;
+
+    // Build preview table (first 10 rows)
+    const sampleKeys = Object.keys(parsedEnrichRows[0]);
+    const label = { ticketId:'Ticket ID', channel:'Channel', customerEmail:'Customer Email',
+                    contactReason:'Contact Reason', lifespanSegment:'Lifespan Segment',
+                    ltr:'LTR', store:'Store' };
+    const preview = parsedEnrichRows.slice(0, 10);
+    let html = '<table><thead><tr>' +
+      sampleKeys.map(k=>`<th>${escHtml(label[k]||k)}</th>`).join('') +
+      '</tr></thead><tbody>';
+    preview.forEach(row => {
+      html += '<tr>' + sampleKeys.map(k=>`<td>${escHtml(row[k]||'')}</td>`).join('') + '</tr>';
+    });
+    html += '</tbody></table>';
+    previewTable.innerHTML = html;
+    previewWrap.style.display = 'block';
+  };
+  reader.readAsText(file);
+}
+
+async function importEnrichmentCSV() {
+  if (!parsedEnrichRows.length) return;
+  const btn    = document.getElementById('enrich-upload-btn');
+  const status = document.getElementById('enrich-upload-status');
+  btn.disabled = true;
+  status.textContent = 'Uploading…';
+  status.style.color = '#64748B';
+
+  try {
+    const res = await apiPost({ action: 'importEnrichment', rows: parsedEnrichRows });
+    if (res.ok) {
+      status.textContent = `✅ Done — ${res.added} added, ${res.updated} updated (${res.total} total rows in Enrichment sheet).`;
+      status.style.color = '#059669';
+
+      // Show last-import banner
+      const lastEl = document.getElementById('enrich-last-import');
+      const now    = new Date().toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'});
+      lastEl.textContent = `Last import: ${now} — ${res.added} new, ${res.updated} updated by ${currentUser.name||currentUser.email}`;
+      lastEl.style.display = 'block';
+
+      // Refresh in-memory cache so new enrichment fields are visible immediately
+      await loadData();
+      showToast(`✅ Enrichment imported — ${res.added} added, ${res.updated} updated`);
+    } else {
+      throw new Error(res.error || 'Unknown error');
+    }
+  } catch(err) {
+    status.textContent = '❌ ' + err.message;
+    status.style.color = '#EF4444';
+    btn.disabled = false;
+  }
+}
+
+function clearEnrichImport() {
+  parsedEnrichRows = [];
+  const fileInput = document.getElementById('enrich-file-input');
+  if (fileInput) fileInput.value = '';
+  document.getElementById('enrich-parse-status').style.display  = 'none';
+  document.getElementById('enrich-preview-wrap').style.display  = 'none';
+  document.getElementById('enrich-upload-btn').disabled         = true;
+  document.getElementById('enrich-upload-status').textContent   = '';
 }
 
 // ══ HELPERS ═══════════════════════════════════════════════════════════════════
@@ -2154,6 +2533,14 @@ function yesnoBadge(v) {
   if (v==='YES') return '<span class="badge badge-yes">✓ YES</span>';
   if (v==='NO')  return '<span class="badge badge-no">✗ NO</span>';
   return '<span class="badge badge-na">—</span>';
+}
+
+function ltrBadgeClass(ltr) {
+  const v = (ltr||'').toLowerCase();
+  if (v.includes('promot'))  return 'badge-delivered';  // green
+  if (v.includes('passive')) return 'badge-system';     // amber
+  if (v.includes('detract')) return 'badge-disputed';   // red
+  return 'badge-na';
 }
 
 // ══ GUIDE ═════════════════════════════════════════════════════════════════════
