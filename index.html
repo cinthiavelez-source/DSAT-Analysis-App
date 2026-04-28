@@ -386,7 +386,10 @@ tr:hover td{background:#FAFAFA}
           <!-- 2. DSAT Date -->
           <div class="form-group">
             <label for="f-dsat-date">2. DSAT Date (date received) *</label>
-            <input type="date" id="f-dsat-date" required>
+            <input type="date" id="f-dsat-date" required onchange="checkDsatDate(this.value)">
+            <div id="dsat-date-error" style="display:none;margin-top:.4rem;padding:.55rem .85rem;background:#FEE2E2;border:1.5px solid #EF4444;border-radius:.5rem;font-size:.82rem;color:#991B1B;align-items:center;gap:.5rem">
+              🚫 <span id="dsat-date-error-msg"></span>
+            </div>
           </div>
 
           <!-- 3. Ticket ID -->
@@ -1462,6 +1465,29 @@ function renderAnalytics() {
   });
 }
 
+// ── DSAT date hard validation ─────────────────────────────────────────────────
+function checkDsatDate(val) {
+  const errBox = document.getElementById('dsat-date-error');
+  const errMsg = document.getElementById('dsat-date-error-msg');
+  if (!errBox || !val) return true;
+
+  const today        = new Date().toISOString().slice(0,10);
+  const analysisDate = document.getElementById('f-analysis-date').value;
+
+  if (val >= today) {
+    errMsg.textContent = 'DSAT Date cannot be today or a future date. The survey must have been received before today.';
+    errBox.style.display = 'flex';
+    return false;
+  }
+  if (analysisDate && val > analysisDate) {
+    errMsg.textContent = 'DSAT Date cannot be after the Date of Analysis. The survey must be received before the audit is completed.';
+    errBox.style.display = 'flex';
+    return false;
+  }
+  errBox.style.display = 'none';
+  return true;
+}
+
 // ── Analysis date warning ─────────────────────────────────────────────────────
 function checkAnalysisDate(val) {
   const warn = document.getElementById('analysis-date-warning');
@@ -1480,6 +1506,14 @@ async function submitDSAT(e) {
   if (!mainReason) { showToast('Please select a main reason.','#EF4444'); return; }
   const subReason = document.getElementById('f-sub-reason').value;
   if (!subReason) { showToast('Please select a sub-reason.','#EF4444'); return; }
+
+  // ── DSAT date hard block ──────────────────────────────────────────────────
+  const dsatDateVal = document.getElementById('f-dsat-date').value;
+  if (!checkDsatDate(dsatDateVal)) {
+    showToast('🚫 Invalid DSAT Date — please correct it before submitting.', '#EF4444');
+    document.getElementById('f-dsat-date').focus();
+    return;
+  }
 
   // ── Analysis date soft check ──────────────────────────────────────────────
   const analysisDateVal = document.getElementById('f-analysis-date').value;
@@ -1545,9 +1579,11 @@ function resetForm() {
   // Re-set today's date
   const today = new Date().toISOString().slice(0,10);
   document.getElementById('f-analysis-date').value = today;
-  // Hide any date warning on reset (today is auto-filled but warning only shows on manual selection)
+  // Hide date warning and DSAT date error on reset
   const warn = document.getElementById('analysis-date-warning');
   if (warn) warn.style.display = 'none';
+  const dsatErr = document.getElementById('dsat-date-error');
+  if (dsatErr) dsatErr.style.display = 'none';
 }
 
 // ══ DASHBOARD ═════════════════════════════════════════════════════════════════
