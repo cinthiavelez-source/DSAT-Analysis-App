@@ -378,8 +378,8 @@ tr:hover td{background:#FAFAFA}
           <div class="form-group">
             <label for="f-analysis-date">1. Date of Analysis *</label>
             <input type="date" id="f-analysis-date" required onchange="checkAnalysisDate(this.value)">
-            <div id="analysis-date-warning" style="display:none;margin-top:.4rem;padding:.55rem .85rem;background:#FEF3C7;border:1.5px solid #F59E0B;border-radius:.5rem;font-size:.82rem;color:#92400E;display:none;align-items:center;gap:.5rem">
-              ⚠️ <span>The Date of Analysis is set to <strong>today</strong>. Surveys are typically received before the audit date — please confirm this is correct before submitting.</span>
+            <div id="analysis-date-warning" style="display:none;margin-top:.4rem;padding:.55rem .85rem;background:#FEE2E2;border:1.5px solid #EF4444;border-radius:.5rem;font-size:.82rem;color:#991B1B;align-items:center;gap:.5rem">
+              🚫 <span>Date of Analysis cannot be in the future.</span>
             </div>
           </div>
 
@@ -1465,22 +1465,14 @@ function renderAnalytics() {
   });
 }
 
-// ── DSAT date hard validation ─────────────────────────────────────────────────
+// ── Date validation (inline feedback) ────────────────────────────────────────
 function checkDsatDate(val) {
   const errBox = document.getElementById('dsat-date-error');
   const errMsg = document.getElementById('dsat-date-error-msg');
-  if (!errBox || !val) return true;
-
-  const today        = new Date().toISOString().slice(0,10);
+  if (!errBox) return true;
   const analysisDate = document.getElementById('f-analysis-date').value;
-
-  if (val >= today) {
-    errMsg.textContent = 'DSAT Date cannot be today or a future date. The survey must have been received before today.';
-    errBox.style.display = 'flex';
-    return false;
-  }
-  if (analysisDate && val > analysisDate) {
-    errMsg.textContent = 'DSAT Date cannot be after the Date of Analysis. The survey must be received before the audit is completed.';
+  if (val && analysisDate && val >= analysisDate) {
+    errMsg.textContent = `DSAT Date must be before the Date of Analysis (${analysisDate}). The survey must be received before the audit is completed.`;
     errBox.style.display = 'flex';
     return false;
   }
@@ -1488,13 +1480,42 @@ function checkDsatDate(val) {
   return true;
 }
 
-// ── Analysis date warning ─────────────────────────────────────────────────────
 function checkAnalysisDate(val) {
   const warn = document.getElementById('analysis-date-warning');
   if (!warn) return;
   const today = new Date().toISOString().slice(0,10);
-  const isTodayOrFuture = val >= today;
-  warn.style.display = isTodayOrFuture ? 'flex' : 'none';
+  warn.style.display = val > today ? 'flex' : 'none';
+  const dsatVal = document.getElementById('f-dsat-date').value;
+  if (dsatVal) checkDsatDate(dsatVal);
+}
+
+// ── Master date validator — called on every submit attempt ───────────────────
+// Returns null if valid, or an error message string if invalid.
+function validateDates() {
+  const analysisDate = document.getElementById('f-analysis-date').value;
+  const dsatDate     = document.getElementById('f-dsat-date').value;
+  const today        = new Date().toISOString().slice(0,10);
+
+  // Scenario 4: Analysis Date is in the future
+  if (analysisDate > today) {
+    document.getElementById('f-analysis-date').focus();
+    return '🚫 Date of Analysis cannot be in the future.';
+  }
+
+  // Scenario 2 & 3: DSAT Date is the same as or after the Analysis Date
+  if (dsatDate && analysisDate && dsatDate >= analysisDate) {
+    // Show inline error too
+    const errBox = document.getElementById('dsat-date-error');
+    const errMsg = document.getElementById('dsat-date-error-msg');
+    if (errBox && errMsg) {
+      errMsg.textContent = `DSAT Date must be before the Date of Analysis (${analysisDate}).`;
+      errBox.style.display = 'flex';
+    }
+    document.getElementById('f-dsat-date').focus();
+    return '🚫 DSAT Date must be strictly before the Date of Analysis.';
+  }
+
+  return null; // all good
 }
 
 // ══ SUBMIT DSAT ═══════════════════════════════════════════════════════════════
@@ -1507,26 +1528,9 @@ async function submitDSAT(e) {
   const subReason = document.getElementById('f-sub-reason').value;
   if (!subReason) { showToast('Please select a sub-reason.','#EF4444'); return; }
 
-  // ── DSAT date hard block ──────────────────────────────────────────────────
-  const dsatDateVal = document.getElementById('f-dsat-date').value;
-  if (!checkDsatDate(dsatDateVal)) {
-    showToast('🚫 Invalid DSAT Date — please correct it before submitting.', '#EF4444');
-    document.getElementById('f-dsat-date').focus();
-    return;
-  }
-
-  // ── Analysis date soft check ──────────────────────────────────────────────
-  const analysisDateVal = document.getElementById('f-analysis-date').value;
-  const todayStr        = new Date().toISOString().slice(0,10);
-  if (analysisDateVal >= todayStr) {
-    const confirmed = window.confirm(
-      '⚠️  Date of Analysis Warning\n\n' +
-      'The Date of Analysis is set to today\'s date (' + todayStr + ').\n\n' +
-      'Surveys are typically received before the audit date.\n\n' +
-      'Are you sure you want to submit with today\'s date?'
-    );
-    if (!confirmed) return;   // user clicked Cancel — stay on form
-  }
+  // ── Date validation — hard block for all invalid date combinations ─────────
+  const dateError = validateDates();
+  if (dateError) { showToast(dateError, '#EF4444'); return; }
   const u = getUser();
   const record = {
     analysisDate:           document.getElementById('f-analysis-date').value,
