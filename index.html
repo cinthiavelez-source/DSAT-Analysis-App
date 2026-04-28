@@ -377,7 +377,10 @@ tr:hover td{background:#FAFAFA}
           <!-- 1. Date of Analysis -->
           <div class="form-group">
             <label for="f-analysis-date">1. Date of Analysis *</label>
-            <input type="date" id="f-analysis-date" required>
+            <input type="date" id="f-analysis-date" required onchange="checkAnalysisDate(this.value)">
+            <div id="analysis-date-warning" style="display:none;margin-top:.4rem;padding:.55rem .85rem;background:#FEF3C7;border:1.5px solid #F59E0B;border-radius:.5rem;font-size:.82rem;color:#92400E;display:none;align-items:center;gap:.5rem">
+              ⚠️ <span>The Date of Analysis is set to <strong>today</strong>. Surveys are typically received before the audit date — please confirm this is correct before submitting.</span>
+            </div>
           </div>
 
           <!-- 2. DSAT Date -->
@@ -1459,6 +1462,15 @@ function renderAnalytics() {
   });
 }
 
+// ── Analysis date warning ─────────────────────────────────────────────────────
+function checkAnalysisDate(val) {
+  const warn = document.getElementById('analysis-date-warning');
+  if (!warn) return;
+  const today = new Date().toISOString().slice(0,10);
+  const isTodayOrFuture = val >= today;
+  warn.style.display = isTodayOrFuture ? 'flex' : 'none';
+}
+
 // ══ SUBMIT DSAT ═══════════════════════════════════════════════════════════════
 async function submitDSAT(e) {
   e.preventDefault();
@@ -1468,6 +1480,19 @@ async function submitDSAT(e) {
   if (!mainReason) { showToast('Please select a main reason.','#EF4444'); return; }
   const subReason = document.getElementById('f-sub-reason').value;
   if (!subReason) { showToast('Please select a sub-reason.','#EF4444'); return; }
+
+  // ── Analysis date soft check ──────────────────────────────────────────────
+  const analysisDateVal = document.getElementById('f-analysis-date').value;
+  const todayStr        = new Date().toISOString().slice(0,10);
+  if (analysisDateVal >= todayStr) {
+    const confirmed = window.confirm(
+      '⚠️  Date of Analysis Warning\n\n' +
+      'The Date of Analysis is set to today\'s date (' + todayStr + ').\n\n' +
+      'Surveys are typically received before the audit date.\n\n' +
+      'Are you sure you want to submit with today\'s date?'
+    );
+    if (!confirmed) return;   // user clicked Cancel — stay on form
+  }
   const u = getUser();
   const record = {
     analysisDate:           document.getElementById('f-analysis-date').value,
@@ -1518,7 +1543,11 @@ function resetForm() {
   subInp.placeholder = 'Select main reason first…';
   document.getElementById('f-sub-reason').value='';
   // Re-set today's date
-  document.getElementById('f-analysis-date').value = new Date().toISOString().slice(0,10);
+  const today = new Date().toISOString().slice(0,10);
+  document.getElementById('f-analysis-date').value = today;
+  // Hide any date warning on reset (today is auto-filled but warning only shows on manual selection)
+  const warn = document.getElementById('analysis-date-warning');
+  if (warn) warn.style.display = 'none';
 }
 
 // ══ DASHBOARD ═════════════════════════════════════════════════════════════════
