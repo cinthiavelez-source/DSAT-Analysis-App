@@ -2385,14 +2385,22 @@ function switchAdminTab(tab) {
 
 let parsedEnrichRows = [];   // holds parsed CSV rows until user confirms upload
 
-function parseCSV(text) {
-  // Split into lines, handle \r\n and \n
-  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
-  const result = [];
-  if (!lines.length) return result;
+function parseDelimitedText(text) {
+  // Strip BOM if present
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
 
-  // Parse a single CSV line respecting quoted fields
+  const lines = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
+  if (!lines.length) return { error: 'File appears to be empty.' };
+
+  // Auto-detect delimiter: tab wins if first line has more tabs than commas
+  const firstLine = lines[0];
+  const tabCount   = (firstLine.match(/\t/g)||[]).length;
+  const commaCount = (firstLine.match(/,/g)||[]).length;
+  const delim = tabCount >= commaCount ? '\t' : ',';
+
+  // Parse a single line respecting quoted fields (for CSV; TSV rarely quotes)
   function parseLine(line) {
+    if (delim === '\t') return line.split('\t');
     const fields = [];
     let cur = '', inQ = false;
     for (let i = 0; i < line.length; i++) {
@@ -2402,32 +2410,39 @@ function parseCSV(text) {
         else if (c === '"')                 { inQ = false; }
         else                                { cur += c; }
       } else {
-        if (c === '"')       { inQ = true; }
-        else if (c === ',')  { fields.push(cur); cur = ''; }
-        else                 { cur += c; }
+        if (c === '"')      { inQ = true; }
+        else if (c === ',') { fields.push(cur); cur = ''; }
+        else                { cur += c; }
       }
     }
     fields.push(cur);
     return fields;
   }
 
-  // Header normalisation — map raw header -> canonical field name
-  const rawHeaders = parseLine(lines[0]).map(h => h.trim());
+  // Normalise header -> canonical field name (flexible matching)
   function normHeader(h) {
-    const u = h.toUpperCase().replace(/[\s_-]+/g,'_');
-    if (u === 'TICKET_ID')                         return 'ticketId';
-    if (u === 'CHANNEL')                           return 'channel';
-    if (u === 'CUSTOMER_EMAIL')                    return 'customerEmail';
-    if (u === 'CONTACT_REASON' || u === 'CONTACTREASON') return 'contactReason';
-    if (u === 'LIFESPAN_SEGMENT_AT_TICKET' || u === 'LIFESPAN_SEGMENT') return 'lifespanSegment';
-    if (u === 'LTR')                               return 'ltr';
-    if (u === 'STORE')                             return 'store';
-    return null;  // unrecognised — skip
+    const u = h.trim().toUpperCase().replace(/[\s_\-]+/g,'_');
+    if (u === 'TICKET_ID')                                    return 'ticketId';
+    if (u === 'CHANNEL')                                      return 'channel';
+    if (u === 'CUSTOMER_EMAIL')                               return 'customerEmail';
+    if (u === 'CONTACT_REASON' || u === 'CONTACTREASON')      return 'contactReason';
+    if (u === 'LIFESPAN_SEGMENT_AT_TICKET' ||
+        u === 'LIFESPAN_SEGMENT')                             return 'lifespanSegment';
+    if (u === 'LTR')                                          return 'ltr';
+    if (u === 'STORE')                                        return 'store';
+    return null;
   }
-  const headers = rawHeaders.map(normHeader);
-  const hasTicketId = headers.includes('ticketId');
-  if (!hasTicketId) return { error: 'Column TICKET_ID not found. Please check your file.' };
 
+  const rawHeaders = parseLine(lines[0]).map(h => h.trim().replace(/^﻿/,''));
+  const headers    = rawHeaders.map(normHeader);
+
+  if (!headers.includes('ticketId')) {
+    // Show which columns were actually found to help diagnose
+    const found = rawHeaders.filter(Boolean).join(', ');
+    return { error: `Column TICKET_ID not found. Columns detected: ${found || '(none — check file encoding)'}` };
+  }
+
+  const result = [];
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
@@ -2454,9 +2469,20 @@ function previewEnrichCSV(input) {
   const file = input.files[0];
   if (!file) return;
 
+  // Use ArrayBuffer so we can detect UTF-16 BOM and decode correctly
   const reader = new FileReader();
   reader.onload = function(e) {
-    const result = parseCSV(e.target.result);
+    const buf   = e.target.result;
+    const bytes = new Uint8Array(buf);
+
+    // Detect encoding from BOM
+    let encoding = 'utf-8';
+    if (bytes[0] === 0xFF && bytes[1] === 0xFE) encoding = 'utf-16le';
+    else if (bytes[0] === 0xFE && bytes[1] === 0xFF) encoding = 'utf-16be';
+
+    const text   = new TextDecoder(encoding).decode(buf);
+    const result = parseDelimitedText(text);
+
     if (result && result.error) {
       statusEl.textContent = '❌ ' + result.error;
       statusEl.style.color = '#EF4444';
@@ -2492,7 +2518,7 @@ function previewEnrichCSV(input) {
     previewTable.innerHTML = html;
     previewWrap.style.display = 'block';
   };
-  reader.readAsText(file);
+  reader.readAsArrayBuffer(file);   // ArrayBuffer needed for encoding detection
 }
 
 async function importEnrichmentCSV() {
