@@ -2568,7 +2568,8 @@ async function importEnrichmentCSV() {
 
     const lastEl = document.getElementById('enrich-last-import');
     const now    = new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
-    lastEl.textContent = `Last import: ${now} — ${totalAdded} new, ${totalUpdated} updated by ${currentUser.name || currentUser.email}`;
+    const u = getUser();
+    lastEl.textContent = `Last import: ${now} — ${totalAdded} new, ${totalUpdated} updated by ${u?.name || u?.email || 'unknown'}`;
     lastEl.style.display = 'block';
 
     await loadData();
