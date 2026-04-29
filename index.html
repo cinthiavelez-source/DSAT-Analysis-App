@@ -2497,7 +2497,10 @@ function previewEnrichCSV(input) {
       return;
     }
 
-    statusEl.textContent = `✅ Parsed ${parsedEnrichRows.length.toLocaleString()} rows successfully.`;
+    // Show how many rows will actually match DSAT records
+    const knownIds   = new Set(cachedData.map(r => String(r.ticketId).trim()).filter(Boolean));
+    const matchCount = parsedEnrichRows.filter(r => knownIds.has(String(r.ticketId).trim())).length;
+    statusEl.textContent = `✅ Parsed ${parsedEnrichRows.length.toLocaleString()} rows — ${matchCount.toLocaleString()} match existing DSAT records and will be uploaded.`;
     statusEl.style.color = '#059669';
     statusEl.style.display = 'block';
     uploadBtn.disabled = false;
@@ -2526,27 +2529,51 @@ async function importEnrichmentCSV() {
   const btn    = document.getElementById('enrich-upload-btn');
   const status = document.getElementById('enrich-upload-status');
   btn.disabled = true;
-  status.textContent = 'Uploading…';
-  status.style.color = '#64748B';
+
+  // ── Step 1: pre-filter client-side to only rows matching existing DSATs ──
+  const knownTicketIds = new Set(cachedData.map(r => String(r.ticketId).trim()).filter(Boolean));
+  const matchedRows    = parsedEnrichRows.filter(r => knownTicketIds.has(String(r.ticketId).trim()));
+
+  if (!matchedRows.length) {
+    status.textContent = '⚠️ No rows matched existing DSAT ticket IDs. Nothing was uploaded.';
+    status.style.color = '#F59E0B';
+    btn.disabled = false;
+    return;
+  }
+
+  // ── Step 2: batch upload (500 rows per batch) ────────────────────────────
+  const BATCH_SIZE = 1000;
+  const batches    = [];
+  for (let i = 0; i < matchedRows.length; i += BATCH_SIZE) {
+    batches.push(matchedRows.slice(i, i + BATCH_SIZE));
+  }
+
+  let totalAdded = 0, totalUpdated = 0;
 
   try {
-    const res = await apiPost({ action: 'importEnrichment', rows: parsedEnrichRows });
-    if (res.ok) {
-      status.textContent = `✅ Done — ${res.added} added, ${res.updated} updated (${res.total} total rows in Enrichment sheet).`;
-      status.style.color = '#059669';
+    for (let b = 0; b < batches.length; b++) {
+      status.textContent = `Uploading batch ${b + 1} of ${batches.length} (${matchedRows.length} matched rows)…`;
+      status.style.color = '#64748B';
 
-      // Show last-import banner
-      const lastEl = document.getElementById('enrich-last-import');
-      const now    = new Date().toLocaleString('en-US',{dateStyle:'medium',timeStyle:'short'});
-      lastEl.textContent = `Last import: ${now} — ${res.added} new, ${res.updated} updated by ${currentUser.name||currentUser.email}`;
-      lastEl.style.display = 'block';
-
-      // Refresh in-memory cache so new enrichment fields are visible immediately
-      await loadData();
-      showToast(`✅ Enrichment imported — ${res.added} added, ${res.updated} updated`);
-    } else {
-      throw new Error(res.error || 'Unknown error');
+      const res = await apiPost({ action: 'importEnrichment', rows: batches[b] });
+      if (!res.ok) throw new Error(res.error || 'Unknown error on batch ' + (b + 1));
+      totalAdded   += res.added   || 0;
+      totalUpdated += res.updated || 0;
     }
+
+    // ── Done ────────────────────────────────────────────────────────────────
+    const skipped = parsedEnrichRows.length - matchedRows.length;
+    status.textContent = `✅ Done — ${totalAdded} added, ${totalUpdated} updated. (${skipped.toLocaleString()} rows skipped — no matching DSAT ticket ID)`;
+    status.style.color = '#059669';
+
+    const lastEl = document.getElementById('enrich-last-import');
+    const now    = new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+    lastEl.textContent = `Last import: ${now} — ${totalAdded} new, ${totalUpdated} updated by ${currentUser.name || currentUser.email}`;
+    lastEl.style.display = 'block';
+
+    await loadData();
+    showToast(`✅ Enrichment imported — ${totalAdded} added, ${totalUpdated} updated`);
+
   } catch(err) {
     status.textContent = '❌ ' + err.message;
     status.style.color = '#EF4444';
