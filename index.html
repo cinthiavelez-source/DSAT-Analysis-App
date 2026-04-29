@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CookUnity DSAT Tracker</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',system-ui,sans-serif;background:#F1F5F9;color:#1E293B;min-height:100vh}
@@ -282,6 +283,9 @@ tr:hover td{background:#FAFAFA}
     <button class="nav-btn" data-page="analytics" onclick="navTo('analytics')" id="nav-analytics">
       <span>📈</span><span class="nav-label">Analytics</span>
     </button>
+    <button class="nav-btn" data-page="supervisors" onclick="navTo('supervisors')" id="nav-supervisors" style="display:none">
+      <span>👥</span><span class="nav-label">Supervisors</span>
+    </button>
     <button class="nav-btn" data-page="guide" onclick="navTo('guide')" id="nav-guide">
       <span>📖</span><span class="nav-label">Guide</span>
     </button>
@@ -362,7 +366,7 @@ tr:hover td{background:#FAFAFA}
             <option value="">All Reasons</option>
           </select>
         </div>
-        <button class="btn btn-secondary btn-sm" onclick="clearDashFilters()">✕ Clear</button>
+        <button class="btn btn-warning btn-sm" onclick="clearDashFilters()">↺ Reset Filters</button>
         <span id="dash-filter-badge" style="font-size:.78rem;color:#4F46E5;font-weight:600;align-self:flex-end;padding-bottom:.1rem"></span>
       </div>
     </div>
@@ -386,6 +390,9 @@ tr:hover td{background:#FAFAFA}
         <div class="chart-wrap"><canvas id="chart-sla"></canvas></div>
       </div>
     </div>
+    <!-- Sub-reason breakdown (rendered by renderDashboard) -->
+    <div id="dash-subreason-section"></div>
+
     <div class="card">
       <div class="card-title">📅 Recent DSATs</div>
       <div class="table-wrap" id="dash-recent"></div>
@@ -570,13 +577,14 @@ tr:hover td{background:#FAFAFA}
         <div class="form-group"><label>Contact Reason</label><select id="filter-contact-reason"><option value="">All Reasons</option></select></div>
         <div class="filter-actions">
           <button class="btn btn-primary btn-sm" onclick="applyFilters()">Apply</button>
-          <button class="btn btn-secondary btn-sm" onclick="clearFilters()">Clear</button>
+          <button class="btn btn-warning btn-sm" onclick="clearFilters()">↺ Reset Filters</button>
         </div>
       </div>
       <div class="table-wrap"><table id="records-table">
         <thead><tr>
           <th>Ticket</th><th>DSAT Date</th><th>Week</th><th>Specialist</th><th>Supervisor</th>
           <th>Main Reason</th><th>Sub-Reason</th><th>Channel</th><th>Store</th><th>LTR</th>
+          <th>Lifespan Segment</th><th>Contact Reason</th><th>Customer Email</th>
           <th>Preventable</th><th>Resolved</th><th>Feedback</th><th>Submitted By</th><th>Actions</th>
         </tr></thead>
         <tbody id="records-tbody"></tbody>
@@ -719,6 +727,84 @@ tr:hover td{background:#FAFAFA}
     </div><!-- /admin-import -->
   </div>
 
+  <!-- ── SUPERVISORS PERFORMANCE ──────────────────────────────────────────── -->
+  <div class="page" id="page-supervisors">
+    <div class="page-header">
+      <div>
+        <div class="page-title">👥 Supervisors Performance</div>
+        <div class="page-sub">DSAT share by supervisor — Main Reason, Sub-Reason breakdown &amp; Week-over-Week evolution</div>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="card" style="padding:1rem 1.5rem;margin-bottom:1.25rem">
+      <div style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end">
+        <div class="form-group" style="min-width:170px;margin:0">
+          <label style="font-size:.75rem">Supervisor</label>
+          <select id="sup-filter-supervisor" onchange="renderSupervisors()"><option value="">All Supervisors</option></select>
+        </div>
+        <div class="form-group" style="min-width:170px;margin:0">
+          <label style="font-size:.75rem">Manager</label>
+          <select id="sup-filter-manager" onchange="renderSupervisors()"><option value="">All Managers</option></select>
+        </div>
+        <div class="form-group" style="min-width:150px;margin:0">
+          <label style="font-size:.75rem">Channel</label>
+          <select id="sup-filter-channel" onchange="renderSupervisors()"><option value="">All Channels</option></select>
+        </div>
+        <div class="form-group" style="min-width:150px;margin:0">
+          <label style="font-size:.75rem">Store</label>
+          <select id="sup-filter-store" onchange="renderSupervisors()"><option value="">All Stores</option></select>
+        </div>
+        <div class="form-group" style="min-width:160px;margin:0">
+          <label style="font-size:.75rem">Lifespan Segment</label>
+          <select id="sup-filter-lifespan" onchange="renderSupervisors()"><option value="">All Segments</option></select>
+        </div>
+        <div class="form-group" style="min-width:130px;margin:0">
+          <label style="font-size:.75rem">LTR</label>
+          <select id="sup-filter-ltr" onchange="renderSupervisors()"><option value="">All LTR</option></select>
+        </div>
+        <div class="form-group" style="min-width:180px;margin:0">
+          <label style="font-size:.75rem">Contact Reason</label>
+          <select id="sup-filter-contact-reason" onchange="renderSupervisors()"><option value="">All Reasons</option></select>
+        </div>
+        <button class="btn btn-warning btn-sm" onclick="clearSupFilters()">↺ Reset Filters</button>
+      </div>
+    </div>
+
+    <!-- KPI cards -->
+    <div class="stats-grid" id="sup-stats"></div>
+
+    <!-- Two-column layout: WoW chart + breakdown accordion -->
+    <div style="display:grid;grid-template-columns:1fr 1.2fr;gap:1.25rem;margin-bottom:1.5rem" id="sup-grid">
+
+      <!-- WoW Line chart -->
+      <div class="card" style="margin:0">
+        <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1rem;flex-wrap:wrap">
+          <div class="card-title" style="margin:0">📈 WoW Evolution</div>
+          <div>
+            <button class="an-mode-btn active" id="sup-mode-wow" onclick="setSupMode('WoW')">Week</button>
+            <button class="an-mode-btn" id="sup-mode-mom" onclick="setSupMode('MoM')">Month</button>
+          </div>
+          <div id="sup-week-nav" style="display:flex;align-items:center;gap:.4rem">
+            <button class="btn btn-secondary btn-sm" onclick="supWeekOff--;renderSupervisors()">◀</button>
+            <span id="sup-period-label" style="font-size:.8rem;color:#64748B;white-space:nowrap">Current Period</span>
+            <button class="btn btn-secondary btn-sm" onclick="supWeekOff++;renderSupervisors()">▶</button>
+          </div>
+        </div>
+        <div style="position:relative;height:300px"><canvas id="chart-sup-wow"></canvas></div>
+      </div>
+
+      <!-- Breakdown accordion -->
+      <div class="card" style="margin:0;overflow-y:auto;max-height:420px">
+        <div class="card-title">🏅 Breakdown by Supervisor</div>
+        <div id="sup-breakdown"></div>
+      </div>
+    </div>
+
+    <!-- Full-width sub-reason detail -->
+    <div id="sup-subreason-detail"></div>
+  </div>
+
   <!-- ── ANALYTICS ─────────────────────────────────────────────────────────── -->
   <div class="page" id="page-analytics">
     <div class="page-header">
@@ -807,6 +893,9 @@ tr:hover td{background:#FAFAFA}
             <option value="">All Reasons</option>
           </select>
         </div>
+        <div style="display:flex;align-items:flex-end;margin:0">
+          <button class="btn btn-warning btn-sm" onclick="clearAnalyticsFilters()">↺ Reset Filters</button>
+        </div>
       </div>
     </div>
 
@@ -879,7 +968,7 @@ tr:hover td{background:#FAFAFA}
             <option value="">All Admins</option>
           </select>
         </div>
-        <button class="btn btn-secondary btn-sm" onclick="clearCorrFilters()">✕ Clear</button>
+        <button class="btn btn-warning btn-sm" onclick="clearCorrFilters()">↺ Reset Filters</button>
       </div>
     </div>
 
@@ -1038,6 +1127,8 @@ let cachedRole      = 'viewer';
 let cachedRoles     = [];
 let currentPage     = 'dashboard';
 let chartInstances  = {};
+// Register datalabels plugin globally (loaded via CDN above)
+if (typeof ChartDataLabels !== 'undefined') Chart.register(ChartDataLabels);
 
 // ══ USER ══════════════════════════════════════════════════════════════════════
 function getUser()         { try { return JSON.parse(localStorage.getItem(USER_KEY)); } catch(e){ return null; } }
@@ -1170,7 +1261,7 @@ function calcMonth(dateStr) {
 }
 
 // ══ NAVIGATION ════════════════════════════════════════════════════════════════
-const PAGES = ['dashboard','submit','records','queue','analytics','corrections','guide','admin'];
+const PAGES = ['dashboard','submit','records','queue','analytics','supervisors','corrections','guide','admin'];
 
 function navTo(page) {
   currentPage = page;
@@ -1185,6 +1276,7 @@ function navTo(page) {
   else if (page==='records')     renderRecords(cachedData);
   else if (page==='queue')       renderQueue(cachedData);
   else if (page==='analytics')   { buildAnalyticsFilters(); renderAnalytics(); }
+  else if (page==='supervisors') { buildSupervisorFilter(); renderSupervisors(); }
   else if (page==='corrections') renderCorrections();
   else if (page==='guide')       renderGuide();
   else if (page==='admin')       { switchAdminTab('roles'); loadRoles(); renderHierarchyTable(); }
@@ -1201,8 +1293,9 @@ function updateRoleUI() {
 
   document.getElementById('nav-submit').style.display      = canSubmit() ? '' : 'none';
   document.getElementById('nav-queue').style.display       = isSupervisor() ? '' : 'none';
-  document.getElementById('nav-corrections').style.display = isAdmin() || cachedRole==='analyst' ? '' : 'none';
-  document.getElementById('nav-admin').style.display       = isAdmin() ? '' : 'none';
+  document.getElementById('nav-corrections').style.display  = isAdmin() || cachedRole==='analyst' ? '' : 'none';
+  document.getElementById('nav-supervisors').style.display  = isAdmin() || isSupervisor() || cachedRole==='analyst' ? '' : 'none';
+  document.getElementById('nav-admin').style.display        = isAdmin() ? '' : 'none';
 
   // Queue badge
   const pending = cachedData.filter(r=>r.mainReason==='Agent - Related' && r.feedbackStatus==='Pending');
@@ -1705,6 +1798,93 @@ function renderDashboard(data) {
     [slaPending, slaDelivered, slaDisputed, slaNa],
     ['#F59E0B','#10B981','#EF4444','#E2E8F0']);
 
+  // ── Sub-Reason Breakdown ────────────────────────────────────────────────────
+  const MAIN_COLORS = {
+    'Agent - Related':        '#4F46E5',
+    'Customer Expectations':  '#F59E0B',
+    'Process - Related':      '#10B981',
+    'System - Related':       '#0EA5E9',
+    'Product - Related':      '#EF4444'
+  };
+
+  // Build grouped map: mainReason -> { subReason -> count }
+  const grouped = {};
+  data.forEach(r => {
+    const main = r.mainReason || 'Unknown';
+    const sub  = r.subReason  || 'Unknown';
+    if (!grouped[main]) grouped[main] = {};
+    grouped[main][sub] = (grouped[main][sub] || 0) + 1;
+  });
+
+  // Sort main reasons by total desc
+  const mainReasonsSorted = Object.entries(grouped)
+    .map(([main, subs]) => ({ main, total: Object.values(subs).reduce((a,b)=>a+b,0), subs }))
+    .sort((a,b) => b.total - a.total);
+
+  const srSection = document.getElementById('dash-subreason-section');
+  if (srSection) {
+    let html = `
+    <div class="card" style="margin-bottom:1.5rem">
+      <div class="card-title" style="margin-bottom:.75rem">
+        🔍 Sub-Reason Breakdown
+        <small style="font-weight:400;color:#64748B;font-size:.8rem">— click a main reason to expand</small>
+      </div>
+      <div id="dash-sr-accordion">`;
+
+    mainReasonsSorted.forEach(({ main, total, subs }, idx) => {
+      const color    = MAIN_COLORS[main] || '#94A3B8';
+      const pct      = data.length ? Math.round(total / data.length * 100) : 0;
+      const subsSorted = Object.entries(subs).sort((a,b)=>b[1]-a[1]);
+      const maxSub   = subsSorted[0]?.[1] || 1;
+
+      html += `
+        <div class="sr-group" style="border:1.5px solid #E2E8F0;border-radius:.75rem;margin-bottom:.6rem;overflow:hidden">
+          <div class="sr-group-header" onclick="toggleDashSR(${idx})"
+            style="display:flex;align-items:center;gap:1rem;padding:.85rem 1.25rem;cursor:pointer;background:#FAFAFA;user-select:none">
+            <span style="width:12px;height:12px;border-radius:50%;background:${color};flex-shrink:0"></span>
+            <span style="font-weight:700;font-size:.9rem;color:#1E293B;flex:1">${escHtml(main)}</span>
+            <span class="badge" style="background:${color}20;color:${color};font-size:.78rem">${total} DSAT${total!==1?'s':''} &nbsp;·&nbsp; ${pct}%</span>
+            <span id="dash-sr-chevron-${idx}" style="color:#94A3B8;transition:transform .2s;font-size:.85rem">▶</span>
+          </div>
+          <div id="dash-sr-body-${idx}" style="display:none;padding:.75rem 1.25rem 1rem">
+            <table style="width:100%;font-size:.83rem;border-collapse:collapse">
+              <thead>
+                <tr>
+                  <th style="text-align:left;padding:.4rem .5rem;color:#64748B;font-size:.75rem;border-bottom:1px solid #F1F5F9;width:35%">Sub-Reason</th>
+                  <th style="text-align:center;padding:.4rem .5rem;color:#64748B;font-size:.75rem;border-bottom:1px solid #F1F5F9;width:8%">#</th>
+                  <th style="text-align:center;padding:.4rem .5rem;color:#64748B;font-size:.75rem;border-bottom:1px solid #F1F5F9;width:8%">% of Main</th>
+                  <th style="padding:.4rem .5rem;border-bottom:1px solid #F1F5F9;">Participation</th>
+                </tr>
+              </thead>
+              <tbody>`;
+
+      subsSorted.forEach(([sub, cnt]) => {
+        const subPct = Math.round(cnt / total * 100);
+        const barW   = Math.round(cnt / maxSub * 100);
+        html += `
+                <tr style="border-bottom:1px solid #F8FAFC">
+                  <td style="padding:.5rem .5rem;color:#374151;font-weight:500">${escHtml(sub)}</td>
+                  <td style="text-align:center;padding:.5rem .5rem;font-weight:700;color:#1E293B">${cnt}</td>
+                  <td style="text-align:center;padding:.5rem .5rem;color:#64748B">${subPct}%</td>
+                  <td style="padding:.5rem .5rem">
+                    <div style="background:#F1F5F9;border-radius:99px;height:8px;width:100%">
+                      <div style="background:${color};border-radius:99px;height:8px;width:${barW}%;transition:width .3s"></div>
+                    </div>
+                  </td>
+                </tr>`;
+      });
+
+      html += `
+              </tbody>
+            </table>
+          </div>
+        </div>`;
+    });
+
+    html += `</div></div>`;
+    srSection.innerHTML = html;
+  }
+
   // ── Enrichment KPIs (only shown when enrichment data exists) ──
   const enriched = data.filter(r => r.channel || r.store || r.ltr);
   if (enriched.length) {
@@ -1791,12 +1971,45 @@ function renderChart(canvasId, type, labels, dataArr, colors) {
   if (chartInstances[canvasId]) { chartInstances[canvasId].destroy(); }
   const ctx = document.getElementById(canvasId);
   if (!ctx) return;
+  const total = dataArr.reduce((a,b)=>a+(b||0), 0);
+  const isBar = type === 'bar';
+
   chartInstances[canvasId] = new Chart(ctx, {
     type,
-    data: { labels, datasets:[{data:dataArr, backgroundColor:colors, borderWidth:2, borderColor:'#fff'}]},
+    data: { labels, datasets:[{data:dataArr, backgroundColor:colors, borderWidth:isBar?0:2, borderColor:'#fff', borderRadius: isBar?4:0}]},
     options: {
-      responsive:true, maintainAspectRatio:false,
-      plugins:{legend:{position:'right',labels:{font:{size:11},padding:12}},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.raw}`}}}
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: isBar ? { top: 28 } : 0 },
+      scales: isBar ? {
+        y: { display: false, beginAtZero: true },
+        x: { grid: { display: false }, ticks: { font: { size: 10 } } }
+      } : {},
+      plugins: {
+        legend: { position: isBar ? 'bottom' : 'right', labels: { font:{ size:11 }, padding:12 } },
+        tooltip: {
+          callbacks: {
+            label: c => {
+              const pct = total ? Math.round(c.raw / total * 100) : 0;
+              return `${c.label}: ${c.raw} (${pct}%)`;
+            }
+          }
+        },
+        datalabels: {
+          display: c => {
+            const val = c.dataset.data[c.dataIndex] || 0;
+            return isBar ? val > 0 : (total ? val/total*100 : 0) >= 4;
+          },
+          color: isBar ? '#1E293B' : '#fff',
+          font: { weight: '700', size: isBar ? 11 : 10 },
+          anchor: isBar ? 'end' : 'center',
+          align:  isBar ? 'end'  : 'center',
+          offset: isBar ? 2 : 0,
+          formatter: (val) => {
+            const pct = total ? Math.round(val / total * 100) : 0;
+            return `${val}\n${pct}%`;
+          }
+        }
+      }
     }
   });
 }
@@ -1853,7 +2066,7 @@ function renderRecords(data) {
     `${filtered.length} record${filtered.length!==1?'s':''} found · ✏ Corrections ratio: ${corrRatio}% (${editedCount} edited)`;
   const tbody = document.getElementById('records-tbody');
   if (!filtered.length) {
-    tbody.innerHTML='<tr><td colspan="11"><div class="empty-state"><div class="icon">🔍</div><p>No records match your filters.</p></div></td></tr>';
+    tbody.innerHTML='<tr><td colspan="18"><div class="empty-state"><div class="icon">🔍</div><p>No records match your filters.</p></div></td></tr>';
     return;
   }
   tbody.innerHTML = filtered.sort((a,b)=>b.id.localeCompare(a.id)).map(r => {
@@ -1869,6 +2082,9 @@ function renderRecords(data) {
       <td><small>${escHtml(r.channel||'—')}</small></td>
       <td><small>${escHtml(r.store||'—')}</small></td>
       <td>${r.ltr?`<span class="badge ${ltrBadgeClass(r.ltr)}">${escHtml(r.ltr)}</span>`:'<span class="badge badge-na">—</span>'}</td>
+      <td><small>${escHtml(r.lifespanSegment||'—')}</small></td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.contactReason)}">${escHtml(r.contactReason||'—')}</td>
+      <td><small style="color:#64748B">${escHtml(r.customerEmail||'—')}</small></td>
       <td>${yesnoBadge(r.isPreventable)}</td>
       <td>${yesnoBadge(r.issueResolved)}</td>
       <td>${feedbackBadge(r.feedbackStatus)}</td>
@@ -1963,10 +2179,252 @@ function buildSupervisorFilter() {
   fill('dash-filter-lifespan',        segments, 'All Segments');
   fill('dash-filter-ltr',             ltrs,     'All LTR');
   fill('dash-filter-contact-reason',  contRsns, 'All Reasons');
+  // Supervisors tab
+  fill('sup-filter-supervisor',       sups,     'All Supervisors');
+  fill('sup-filter-manager',          mgrs,     'All Managers');
+  fill('sup-filter-channel',          channels, 'All Channels');
+  fill('sup-filter-store',            stores,   'All Stores');
+  fill('sup-filter-lifespan',         segments, 'All Segments');
+  fill('sup-filter-ltr',              ltrs,     'All LTR');
+  fill('sup-filter-contact-reason',   contRsns, 'All Reasons');
 }
 
 function buildAnalyticsFilters() {
   buildSupervisorFilter(); // re-sync dropdowns with latest data
+}
+
+function toggleDashSR(idx) {
+  const body    = document.getElementById(`dash-sr-body-${idx}`);
+  const chevron = document.getElementById(`dash-sr-chevron-${idx}`);
+  if (!body) return;
+  const open = body.style.display === 'block';
+  body.style.display    = open ? 'none'   : 'block';
+  chevron.style.transform = open ? ''     : 'rotate(90deg)';
+  chevron.style.color     = open ? '#94A3B8' : '#4F46E5';
+}
+
+function clearAnalyticsFilters() {
+  ['analytics-supervisor','analytics-manager','analytics-channel','analytics-store',
+   'analytics-lifespan','analytics-ltr','analytics-contact-reason'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  renderAnalytics();
+}
+
+// ══ SUPERVISORS PERFORMANCE ════════════════════════════════════════════════════
+let supMode    = 'WoW';
+let supWeekOff = 0;
+
+const SUP_COLORS = ['#4F46E5','#F59E0B','#10B981','#EF4444','#0EA5E9','#7C3AED','#EC4899','#14B8A6'];
+const MAIN_REASON_COLORS = {
+  'Agent - Related':       '#4F46E5',
+  'Customer Expectations': '#F59E0B',
+  'Process - Related':     '#10B981',
+  'System - Related':      '#0EA5E9',
+  'Product - Related':     '#EF4444'
+};
+
+function setSupMode(mode) {
+  supMode = mode; supWeekOff = 0;
+  document.getElementById('sup-mode-wow').classList.toggle('active', mode==='WoW');
+  document.getElementById('sup-mode-mom').classList.toggle('active', mode==='MoM');
+  renderSupervisors();
+}
+
+function clearSupFilters() {
+  ['sup-filter-supervisor','sup-filter-manager','sup-filter-channel','sup-filter-store',
+   'sup-filter-lifespan','sup-filter-ltr','sup-filter-contact-reason'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  renderSupervisors();
+}
+
+function getSupBaseData() {
+  const v  = id => document.getElementById(id)?.value || '';
+  let data = [...cachedData];
+  const sup      = v('sup-filter-supervisor');
+  const mgr      = v('sup-filter-manager');
+  const channel  = v('sup-filter-channel');
+  const store    = v('sup-filter-store');
+  const lifespan = v('sup-filter-lifespan');
+  const ltr      = v('sup-filter-ltr');
+  const contRsn  = v('sup-filter-contact-reason');
+  if (sup)      data = data.filter(r => r.supervisorName   === sup);
+  if (mgr)      data = data.filter(r => r.managerName      === mgr);
+  if (channel)  data = data.filter(r => r.channel          === channel);
+  if (store)    data = data.filter(r => r.store            === store);
+  if (lifespan) data = data.filter(r => r.lifespanSegment  === lifespan);
+  if (ltr)      data = data.filter(r => r.ltr              === ltr);
+  if (contRsn)  data = data.filter(r => r.contactReason    === contRsn);
+  return data;
+}
+
+function renderSupervisors() {
+  const data = getSupBaseData();
+  const total = data.length;
+
+  // ── KPI Stats ──────────────────────────────────────────────────────────────
+  const supervisors  = [...new Set(data.map(r=>r.supervisorName).filter(Boolean))];
+  const agentRel     = data.filter(r=>r.mainReason==='Agent - Related').length;
+  const preventable  = data.filter(r=>r.isPreventable==='YES').length;
+  const supCounts    = {};
+  data.forEach(r => { if (r.supervisorName) supCounts[r.supervisorName] = (supCounts[r.supervisorName]||0)+1; });
+  const topSup       = Object.entries(supCounts).sort((a,b)=>b[1]-a[1])[0];
+  const statsEl = document.getElementById('sup-stats');
+  if (statsEl) statsEl.innerHTML = `
+    <div class="stat-card indigo"><div class="stat-label">Supervisors</div><div class="stat-value">${supervisors.length}</div><div class="stat-sub">With DSATs in view</div></div>
+    <div class="stat-card purple"><div class="stat-label">Total DSATs</div><div class="stat-value">${total}</div><div class="stat-sub">Matching filters</div></div>
+    <div class="stat-card amber"><div class="stat-label">Agent-Related</div><div class="stat-value">${agentRel}</div><div class="stat-sub">${total?Math.round(agentRel/total*100):0}% of total</div></div>
+    <div class="stat-card green"><div class="stat-label">Top Supervisor</div><div class="stat-value" style="font-size:1.1rem">${topSup?escHtml(topSup[0].split(' ')[0]):'—'}</div><div class="stat-sub">${topSup?topSup[1]+' DSATs':'No data'}</div></div>`;
+
+  // ── WoW / MoM Chart ────────────────────────────────────────────────────────
+  const WEEKS_SHOWN = 8;
+  let periodLabels = [], supWeekData = {};
+  supervisors.forEach(s => supWeekData[s] = []);
+
+  if (supMode === 'WoW') {
+    for (let i = WEEKS_SHOWN - 1; i >= 0; i--) {
+      const off  = supWeekOff - i;
+      const wb   = getWeekBounds(off);
+      const wData = filterByPeriod(data, wb.start, wb.end);
+      periodLabels.push(shortDate(wb.start));
+      supervisors.forEach(s => {
+        supWeekData[s].push(wData.filter(r=>r.supervisorName===s).length);
+      });
+    }
+    const currWB = getWeekBounds(supWeekOff);
+    document.getElementById('sup-period-label').textContent =
+      `${shortDate(currWB.start)} – ${shortDate(currWB.end)}`;
+    document.getElementById('sup-week-nav').style.display = 'flex';
+  } else {
+    // MoM: last 6 months
+    const baseMonth = new Date(); baseMonth.setDate(1);
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(baseMonth); d.setMonth(d.getMonth() - i + supWeekOff);
+      const ym = d.toISOString().slice(0,7);
+      const mb = getMonthBounds(ym);
+      const mData = filterByPeriod(data, mb.start, mb.end);
+      periodLabels.push(d.toLocaleString('en-US',{month:'short',year:'2-digit'}));
+      supervisors.forEach(s => {
+        supWeekData[s].push(mData.filter(r=>r.supervisorName===s).length);
+      });
+    }
+    document.getElementById('sup-period-label').textContent = 'Last 6 months';
+    document.getElementById('sup-week-nav').style.display = 'flex';
+  }
+
+  // Destroy old chart
+  if (chartInstances['chart-sup-wow']) { chartInstances['chart-sup-wow'].destroy(); delete chartInstances['chart-sup-wow']; }
+  const wowCtx = document.getElementById('chart-sup-wow');
+  if (wowCtx && supervisors.length) {
+    chartInstances['chart-sup-wow'] = new Chart(wowCtx, {
+      type: 'line',
+      data: {
+        labels: periodLabels,
+        datasets: supervisors.slice(0,8).map((s, i) => ({
+          label: s,
+          data: supWeekData[s],
+          borderColor: SUP_COLORS[i % SUP_COLORS.length],
+          backgroundColor: SUP_COLORS[i % SUP_COLORS.length] + '22',
+          borderWidth: 2, pointRadius: 4, tension: 0.3, fill: false
+        }))
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { position:'bottom', labels:{ font:{size:10}, padding:8 } },
+          tooltip: { mode:'index', intersect:false },
+          datalabels: {
+            display: c => c.dataset.data[c.dataIndex] > 0,
+            color: c => SUP_COLORS[c.datasetIndex % SUP_COLORS.length],
+            font: { size: 9, weight:'700' },
+            anchor:'end', align:'top', offset:2,
+            formatter: v => v > 0 ? v : ''
+          }
+        },
+        scales: {
+          y: { beginAtZero:true, ticks:{ stepSize:1, font:{size:10} }, grid:{ color:'#F1F5F9' } },
+          x: { ticks:{ font:{size:10} }, grid:{ display:false } }
+        }
+      }
+    });
+  } else if (wowCtx && !supervisors.length) {
+    const c = wowCtx.getContext('2d');
+    c.clearRect(0,0,wowCtx.width,wowCtx.height);
+  }
+
+  // ── Breakdown Accordion ────────────────────────────────────────────────────
+  const breakdown = document.getElementById('sup-breakdown');
+  if (!breakdown) return;
+  if (!supervisors.length) { breakdown.innerHTML='<div class="empty-state"><div class="icon">👥</div><p>No data for selected filters.</p></div>'; return; }
+
+  const mainKeys = Object.keys(SUB_REASONS);
+  let html = `
+    <table style="width:100%;font-size:.8rem;border-collapse:collapse">
+      <thead><tr style="background:#F8FAFC">
+        <th style="padding:.5rem .75rem;text-align:left;border-bottom:2px solid #E2E8F0;min-width:130px">Supervisor</th>
+        <th style="padding:.5rem .4rem;text-align:center;border-bottom:2px solid #E2E8F0">Total</th>
+        <th style="padding:.5rem .4rem;text-align:center;border-bottom:2px solid #E2E8F0">Share</th>
+        ${mainKeys.map(k=>`<th style="padding:.5rem .4rem;text-align:center;border-bottom:2px solid #E2E8F0;color:${MAIN_REASON_COLORS[k]||'#64748B'};font-size:.72rem">${k.replace(' - Related','').replace(' Expectations','')}</th>`).join('')}
+        <th style="padding:.5rem .4rem;text-align:center;border-bottom:2px solid #E2E8F0;font-size:.72rem">Top Sub-Reason</th>
+        <th style="border-bottom:2px solid #E2E8F0"></th>
+      </tr></thead><tbody>`;
+
+  const supList = Object.entries(supCounts).sort((a,b)=>b[1]-a[1]);
+  supList.forEach(([supName, cnt], idx) => {
+    const supData  = data.filter(r=>r.supervisorName===supName);
+    const share    = total ? Math.round(cnt/total*100) : 0;
+    const mainCnts = mainKeys.map(k => supData.filter(r=>r.mainReason===k).length);
+    // top sub-reason
+    const subMap = {};
+    supData.forEach(r => { if(r.subReason) subMap[r.subReason]=(subMap[r.subReason]||0)+1; });
+    const topSub = Object.entries(subMap).sort((a,b)=>b[1]-a[1])[0];
+
+    html += `
+      <tr class="sup-row" style="border-bottom:1px solid #F1F5F9;cursor:pointer" onclick="toggleSupRow(${idx})">
+        <td style="padding:.6rem .75rem;font-weight:600;color:#1E293B">
+          <span id="sup-chev-${idx}" style="color:#94A3B8;margin-right:.4rem;transition:transform .2s;display:inline-block">▶</span>
+          ${escHtml(supName)}
+        </td>
+        <td style="text-align:center;padding:.6rem .4rem;font-weight:700">${cnt}</td>
+        <td style="text-align:center;padding:.6rem .4rem">
+          <span style="background:#EEF2FF;color:#4F46E5;padding:.15rem .5rem;border-radius:99px;font-size:.75rem;font-weight:700">${share}%</span>
+        </td>
+        ${mainCnts.map((c,i)=>`<td style="text-align:center;padding:.6rem .4rem;color:${c>0?MAIN_REASON_COLORS[mainKeys[i]]||'#374151':'#CBD5E1'};font-weight:${c>0?700:400}">${c>0?c:'—'}</td>`).join('')}
+        <td style="padding:.6rem .4rem;font-size:.78rem;color:#64748B;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(topSub?.[0]||'')}">
+          ${topSub ? escHtml(topSub[0]) + ` <span style="color:#94A3B8">(${topSub[1]})</span>` : '—'}
+        </td>
+        <td style="padding:.6rem .4rem"></td>
+      </tr>
+      <tr id="sup-detail-${idx}" style="display:none;background:#F8FAFC">
+        <td colspan="${4 + mainKeys.length}" style="padding:0 .75rem .75rem 2rem">
+          <div style="padding-top:.6rem">
+            <div style="font-size:.78rem;font-weight:700;color:#64748B;margin-bottom:.5rem;text-transform:uppercase;letter-spacing:.05em">Sub-Reason Breakdown</div>
+            <div style="display:flex;flex-wrap:wrap;gap:.5rem">
+              ${Object.entries(subMap).sort((a,b)=>b[1]-a[1]).map(([sub,c])=>{
+                const subPct = cnt ? Math.round(c/cnt*100) : 0;
+                return `<span style="background:#fff;border:1.5px solid #E2E8F0;border-radius:.5rem;padding:.3rem .6rem;font-size:.78rem;color:#374151">
+                  <strong>${escHtml(sub)}</strong>: ${c} <span style="color:#94A3B8">(${subPct}%)</span>
+                </span>`;
+              }).join('')}
+            </div>
+          </div>
+        </td>
+      </tr>`;
+  });
+
+  html += '</tbody></table>';
+  breakdown.innerHTML = html;
+}
+
+function toggleSupRow(idx) {
+  const detail = document.getElementById(`sup-detail-${idx}`);
+  const chev   = document.getElementById(`sup-chev-${idx}`);
+  if (!detail) return;
+  const open = detail.style.display === 'table-row';
+  detail.style.display       = open ? 'none'         : 'table-row';
+  chev.style.transform       = open ? ''             : 'rotate(90deg)';
+  chev.style.color           = open ? '#94A3B8'      : '#4F46E5';
 }
 
 function exportCSV() {
