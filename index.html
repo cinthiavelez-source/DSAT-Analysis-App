@@ -332,6 +332,36 @@ tr:hover td{background:#FAFAFA}
             <option value="">All Managers</option>
           </select>
         </div>
+        <div class="form-group" style="min-width:150px;margin:0">
+          <label style="font-size:.75rem">Channel</label>
+          <select id="dash-filter-channel" onchange="applyDashFilters()">
+            <option value="">All Channels</option>
+          </select>
+        </div>
+        <div class="form-group" style="min-width:150px;margin:0">
+          <label style="font-size:.75rem">Store</label>
+          <select id="dash-filter-store" onchange="applyDashFilters()">
+            <option value="">All Stores</option>
+          </select>
+        </div>
+        <div class="form-group" style="min-width:160px;margin:0">
+          <label style="font-size:.75rem">Lifespan Segment</label>
+          <select id="dash-filter-lifespan" onchange="applyDashFilters()">
+            <option value="">All Segments</option>
+          </select>
+        </div>
+        <div class="form-group" style="min-width:130px;margin:0">
+          <label style="font-size:.75rem">LTR</label>
+          <select id="dash-filter-ltr" onchange="applyDashFilters()">
+            <option value="">All LTR</option>
+          </select>
+        </div>
+        <div class="form-group" style="min-width:180px;margin:0">
+          <label style="font-size:.75rem">Contact Reason</label>
+          <select id="dash-filter-contact-reason" onchange="applyDashFilters()">
+            <option value="">All Reasons</option>
+          </select>
+        </div>
         <button class="btn btn-secondary btn-sm" onclick="clearDashFilters()">✕ Clear</button>
         <span id="dash-filter-badge" style="font-size:.78rem;color:#4F46E5;font-weight:600;align-self:flex-end;padding-bottom:.1rem"></span>
       </div>
@@ -743,6 +773,38 @@ tr:hover td{background:#FAFAFA}
           <label>Manager</label>
           <select id="analytics-manager" onchange="renderAnalytics()">
             <option value="">All Managers</option>
+          </select>
+        </div>
+
+        <!-- Enrichment filters -->
+        <div class="form-group" style="min-width:150px;margin:0">
+          <label>Channel</label>
+          <select id="analytics-channel" onchange="renderAnalytics()">
+            <option value="">All Channels</option>
+          </select>
+        </div>
+        <div class="form-group" style="min-width:150px;margin:0">
+          <label>Store</label>
+          <select id="analytics-store" onchange="renderAnalytics()">
+            <option value="">All Stores</option>
+          </select>
+        </div>
+        <div class="form-group" style="min-width:160px;margin:0">
+          <label>Lifespan Segment</label>
+          <select id="analytics-lifespan" onchange="renderAnalytics()">
+            <option value="">All Segments</option>
+          </select>
+        </div>
+        <div class="form-group" style="min-width:130px;margin:0">
+          <label>LTR</label>
+          <select id="analytics-ltr" onchange="renderAnalytics()">
+            <option value="">All LTR</option>
+          </select>
+        </div>
+        <div class="form-group" style="min-width:180px;margin:0">
+          <label>Contact Reason</label>
+          <select id="analytics-contact-reason" onchange="renderAnalytics()">
+            <option value="">All Reasons</option>
           </select>
         </div>
       </div>
@@ -1371,11 +1433,23 @@ function setAnalyticsMode(mode) {
 }
 
 function renderAnalytics() {
-  const supervisor = document.getElementById('analytics-supervisor')?.value || '';
-  const manager    = document.getElementById('analytics-manager')?.value    || '';
-  let   base       = [...cachedData];
-  if (supervisor) base = base.filter(r => r.supervisorName === supervisor);
-  if (manager)    base = base.filter(r => r.managerName    === manager);
+  const v = id => document.getElementById(id)?.value || '';
+  const supervisor = v('analytics-supervisor');
+  const manager    = v('analytics-manager');
+  const channel    = v('analytics-channel');
+  const store      = v('analytics-store');
+  const lifespan   = v('analytics-lifespan');
+  const ltr        = v('analytics-ltr');
+  const contRsn    = v('analytics-contact-reason');
+
+  let base = [...cachedData];
+  if (supervisor) base = base.filter(r => r.supervisorName  === supervisor);
+  if (manager)    base = base.filter(r => r.managerName     === manager);
+  if (channel)    base = base.filter(r => r.channel         === channel);
+  if (store)      base = base.filter(r => r.store           === store);
+  if (lifespan)   base = base.filter(r => r.lifespanSegment === lifespan);
+  if (ltr)        base = base.filter(r => r.ltr             === ltr);
+  if (contRsn)    base = base.filter(r => r.contactReason   === contRsn);
 
   let currData, prevData, currLabel, prevLabel;
 
@@ -1728,15 +1802,34 @@ function renderChart(canvasId, type, labels, dataArr, colors) {
 }
 
 // ══ DASHBOARD FILTERS ════════════════════════════════════════════════════════
+const DASH_FILTER_IDS = [
+  'dash-filter-month','dash-filter-supervisor','dash-filter-manager',
+  'dash-filter-channel','dash-filter-store','dash-filter-lifespan',
+  'dash-filter-ltr','dash-filter-contact-reason'
+];
+
 function applyDashFilters() {
-  const month = document.getElementById('dash-filter-month')?.value;
-  const sup   = document.getElementById('dash-filter-supervisor')?.value;
-  const mgr   = document.getElementById('dash-filter-manager')?.value;
+  const v = id => document.getElementById(id)?.value || '';
+  const month     = v('dash-filter-month');
+  const sup       = v('dash-filter-supervisor');
+  const mgr       = v('dash-filter-manager');
+  const channel   = v('dash-filter-channel');
+  const store     = v('dash-filter-store');
+  const lifespan  = v('dash-filter-lifespan');
+  const ltr       = v('dash-filter-ltr');
+  const contRsn   = v('dash-filter-contact-reason');
+
   let filtered = [...cachedData];
-  if (month)  filtered = filtered.filter(r => (r.dsatDate||r.submittedAt||'').slice(0,7) === month);
-  if (sup)    filtered = filtered.filter(r => r.supervisorName === sup);
-  if (mgr)    filtered = filtered.filter(r => r.managerName    === mgr);
-  const active = [month, sup, mgr].filter(Boolean).length;
+  if (month)    filtered = filtered.filter(r => (r.dsatDate||r.submittedAt||'').slice(0,7) === month);
+  if (sup)      filtered = filtered.filter(r => r.supervisorName    === sup);
+  if (mgr)      filtered = filtered.filter(r => r.managerName       === mgr);
+  if (channel)  filtered = filtered.filter(r => r.channel           === channel);
+  if (store)    filtered = filtered.filter(r => r.store             === store);
+  if (lifespan) filtered = filtered.filter(r => r.lifespanSegment   === lifespan);
+  if (ltr)      filtered = filtered.filter(r => r.ltr               === ltr);
+  if (contRsn)  filtered = filtered.filter(r => r.contactReason     === contRsn);
+
+  const active = [month,sup,mgr,channel,store,lifespan,ltr,contRsn].filter(Boolean).length;
   const badge  = document.getElementById('dash-filter-badge');
   if (badge) badge.textContent = active
     ? `${active} filter${active>1?'s':''} active — ${filtered.length} record${filtered.length!==1?'s':''}`
@@ -1745,9 +1838,7 @@ function applyDashFilters() {
 }
 
 function clearDashFilters() {
-  ['dash-filter-month','dash-filter-supervisor','dash-filter-manager'].forEach(id => {
-    const el = document.getElementById(id); if (el) el.value = '';
-  });
+  DASH_FILTER_IDS.forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
   const badge = document.getElementById('dash-filter-badge');
   if (badge) badge.textContent = '';
   renderDashboard(cachedData);
@@ -1857,11 +1948,21 @@ function buildSupervisorFilter() {
   fill('filter-ltr',           ltrs,     'All LTR');
   fill('filter-contact-reason',contRsns, 'All Reasons');
   // Analytics
-  fill('analytics-supervisor', sups, 'All Supervisors');
-  fill('analytics-manager',    mgrs, 'All Managers');
+  fill('analytics-supervisor',      sups,     'All Supervisors');
+  fill('analytics-manager',         mgrs,     'All Managers');
+  fill('analytics-channel',         channels, 'All Channels');
+  fill('analytics-store',           stores,   'All Stores');
+  fill('analytics-lifespan',        segments, 'All Segments');
+  fill('analytics-ltr',             ltrs,     'All LTR');
+  fill('analytics-contact-reason',  contRsns, 'All Reasons');
   // Dashboard
-  fill('dash-filter-supervisor', sups, 'All Supervisors');
-  fill('dash-filter-manager',    mgrs, 'All Managers');
+  fill('dash-filter-supervisor',      sups,     'All Supervisors');
+  fill('dash-filter-manager',         mgrs,     'All Managers');
+  fill('dash-filter-channel',         channels, 'All Channels');
+  fill('dash-filter-store',           stores,   'All Stores');
+  fill('dash-filter-lifespan',        segments, 'All Segments');
+  fill('dash-filter-ltr',             ltrs,     'All LTR');
+  fill('dash-filter-contact-reason',  contRsns, 'All Reasons');
 }
 
 function buildAnalyticsFilters() {
@@ -2572,7 +2673,9 @@ async function importEnrichmentCSV() {
     lastEl.textContent = `Last import: ${now} — ${totalAdded} new, ${totalUpdated} updated by ${u?.name || u?.email || 'unknown'}`;
     lastEl.style.display = 'block';
 
-    await loadData();
+    const freshData = await apiFetch();
+    cachedData = freshData;
+    buildSupervisorFilter();
     showToast(`✅ Enrichment imported — ${totalAdded} added, ${totalUpdated} updated`);
 
   } catch(err) {
