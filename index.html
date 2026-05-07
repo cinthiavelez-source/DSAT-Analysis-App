@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CookUnity DSAT Tracker</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%234F46E5'/%3E%3Crect x='5' y='18' width='5' height='9' rx='1' fill='%2334D399'/%3E%3Crect x='12' y='12' width='5' height='15' rx='1' fill='%2360A5FA'/%3E%3Crect x='19' y='7' width='5' height='20' rx='1' fill='%23F59E0B'/%3E%3Cpolyline points='7.5,16 14.5,10 21.5,5' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -602,7 +603,7 @@ tr:hover td{background:#FAFAFA}
     <div class="page-header">
       <div>
         <div class="page-title">🔔 Feedback Queue</div>
-        <div class="page-sub">Agent-Related DSATs requiring supervisor feedback (10-day SLA)</div>
+        <div class="page-sub">Agent-Related DSATs requiring supervisor feedback (15-day SLA)</div>
       </div>
     </div>
     <div class="stats-grid" id="queue-stats"></div>
@@ -1097,7 +1098,7 @@ const USER_KEY            = 'dsat_user_v1';
 // Replace this with your Google OAuth Client ID from console.cloud.google.com
 const GOOGLE_CLIENT_ID    = '788780379923-grdcv6cti5m12ie40g76ceotujrv67c9.apps.googleusercontent.com';
 const ALLOWED_DOMAIN      = 'cookunity.com';   // only this Google Workspace domain can sign in
-const SLA_DAYS = 10;
+const SLA_DAYS = 15;
 
 // ══ SUB-REASONS MAP ═══════════════════════════════════════════════════════════
 const SUB_REASONS = {
@@ -1837,7 +1838,7 @@ function renderDashboard(data) {
     <div class="stat-card amber"><div class="stat-label">Preventable</div><div class="stat-value">${preventable}</div><div class="stat-sub">${total?Math.round(preventable/total*100):0}% preventable</div></div>
     <div class="stat-card green"><div class="stat-label">Issue Resolved</div><div class="stat-value">${resolved}</div><div class="stat-sub">${total?Math.round(resolved/total*100):0}% resolved</div></div>
     <div class="stat-card red"><div class="stat-label">Pending Feedback</div><div class="stat-value">${pending}</div><div class="stat-sub">${disputed} disputed</div></div>
-    <div class="stat-card sky"><div class="stat-label">SLA Breaches</div><div class="stat-value">${slaBreach}</div><div class="stat-sub">Over 10-day SLA</div></div>`;
+    <div class="stat-card sky"><div class="stat-label">SLA Breaches</div><div class="stat-value">${slaBreach}</div><div class="stat-sub">Over 15-day SLA</div></div>`;
 
   renderChart('chart-reason', 'doughnut',
     Object.keys(SUB_REASONS),
@@ -2669,7 +2670,7 @@ function renderQueue(data) {
 
   const stats = document.getElementById('queue-stats');
   stats.innerHTML = `
-    <div class="stat-card amber"><div class="stat-label">Pending Feedback</div><div class="stat-value">${pending}</div><div class="stat-sub">10-day SLA</div></div>
+    <div class="stat-card amber"><div class="stat-label">Pending Feedback</div><div class="stat-value">${pending}</div><div class="stat-sub">15-day SLA</div></div>
     <div class="stat-card red"><div class="stat-label">Disputed</div><div class="stat-value">${disputed}</div><div class="stat-sub">Requires admin review</div></div>
     <div class="stat-card green"><div class="stat-label">Feedback Delivered</div><div class="stat-value">${delivered}</div><div class="stat-sub">Completed</div></div>
     <div class="stat-card sky"><div class="stat-label">Total (Agent-Related)</div><div class="stat-value">${queue.length}</div><div class="stat-sub">In your queue</div></div>`;
@@ -3343,10 +3344,10 @@ const GUIDE_SECTIONS = [
       <ul>
         <li>Sets the feedback status to <span class="guide-tag badge badge-pending">Pending</span></li>
         <li>Sends an email notification to the agent's supervisor with the ticket details</li>
-        <li>Starts a <strong>10-day SLA countdown</strong></li>
+        <li>Starts a <strong>15-day SLA countdown</strong></li>
       </ul>
       <h4>Supervisor's responsibility</h4>
-      <p>Supervisors must navigate to the <strong>Feedback Queue</strong> tab and submit feedback within 10 days. The SLA bar turns amber within 3 days of the deadline and red when overdue.</p>
+      <p>Supervisors must navigate to the <strong>Feedback Queue</strong> tab and submit feedback within 15 days. The SLA bar turns amber within 3 days of the deadline and red when overdue.</p>
       <div class="step"><div class="step-num">1</div><div>Go to <strong>Feedback Queue</strong> and find the Pending record.</div></div>
       <div class="step"><div class="step-num">2</div><div>Click <strong>Submit Feedback</strong>, write the coaching notes delivered to the agent, and set the status to <strong>Feedback Delivered</strong>.</div></div>
       <div class="step"><div class="step-num">3</div><div>If you disagree with the DSAT classification, select <strong>Disputed</strong>, write your dispute notes, and submit. This escalates to admin for review.</div></div>
