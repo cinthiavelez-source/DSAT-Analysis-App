@@ -6,6 +6,7 @@
 <title>CookUnity DSAT Tracker</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',system-ui,sans-serif;background:#F1F5F9;color:#1E293B;min-height:100vh}
@@ -252,11 +253,15 @@ tr:hover td{background:#FAFAFA}
   <div class="login-card">
     <div class="login-logo">📊</div>
     <h1 class="login-title">CookUnity DSAT Tracker</h1>
-    <p class="login-sub">Sign in with your CookUnity email address</p>
-    <input type="email" id="login-email" placeholder="you@cookunity.com" autocomplete="email">
-    <input type="text" id="login-name" placeholder="Your full name">
-    <button class="btn btn-primary" onclick="doLogin()">Sign In</button>
-    <p class="login-hint">Your email determines your access level.</p>
+    <p class="login-sub">Sign in with your CookUnity Google account</p>
+
+    <!-- Google Sign-In button (rendered by GIS library) -->
+    <div id="google-signin-btn" style="display:flex;justify-content:center;margin-bottom:1rem"></div>
+
+    <!-- Error message area -->
+    <div id="login-error" style="display:none;background:#FEE2E2;border:1.5px solid #EF4444;border-radius:.5rem;padding:.65rem 1rem;font-size:.83rem;color:#991B1B;text-align:center;margin-bottom:.75rem"></div>
+
+    <p class="login-hint">Only <strong>@cookunity.com</strong> accounts are allowed.<br>Your role is assigned by your admin.</p>
   </div>
 </div>
 
@@ -1086,7 +1091,12 @@ tr:hover td{background:#FAFAFA}
 // ══ CONFIG ════════════════════════════════════════════════════════════════════
 const DEFAULT_SCRIPT_URL  = 'https://script.google.com/macros/s/AKfycbxYjUZlJL52RyG3Ij7USGmG45k3fdRbgyckezJ4g0L0uvcA9wvc4u_iY9wzltuy_nfdCA/exec';
 const DEFAULT_ADMIN_EMAIL = 'cinthiavelez@cookunity.com';
-const USER_KEY = 'dsat_user_v1';
+const USER_KEY            = 'dsat_user_v1';
+
+// ─── GOOGLE SSO CONFIG ────────────────────────────────────────────────────────
+// Replace this with your Google OAuth Client ID from console.cloud.google.com
+const GOOGLE_CLIENT_ID    = '788780379923-grdcv6cti5m12ie40g76ceotujrv67c9.apps.googleusercontent.com';
+const ALLOWED_DOMAIN      = 'cookunity.com';   // only this Google Workspace domain can sign in
 const SLA_DAYS = 10;
 
 // ══ SUB-REASONS MAP ═══════════════════════════════════════════════════════════
@@ -1138,27 +1148,80 @@ function isAdmin()         { return cachedRole==='admin' || (getUser()&&getUser(
 function isSupervisor()    { return cachedRole==='supervisor' || isAdmin(); }
 function canSubmit()       { return cachedRole!=='viewer'; }
 
-function doLogin() {
-  const email = document.getElementById('login-email').value.trim().toLowerCase();
-  const name  = document.getElementById('login-name').value.trim();
-  if (!email || !email.includes('@')) { showToast('Please enter a valid email.','#EF4444'); return; }
-  if (!name) { showToast('Please enter your name.','#EF4444'); return; }
-  setUser({email, name});
-  document.getElementById('login-overlay').classList.remove('show');
-  document.getElementById('navbar').style.display='flex';
-  document.getElementById('main-content').style.display='block';
-  initApp();
+// ── Google SSO ────────────────────────────────────────────────────────────────
+function initGoogleSSO() {
+  if (typeof google === 'undefined' || !google.accounts) {
+    // GIS script not loaded yet — retry after a short delay
+    setTimeout(initGoogleSSO, 300);
+    return;
+  }
+  if (!GOOGLE_CLIENT_ID || GOOGLE_CLIENT_ID.startsWith('YOUR_GOOGLE')) {
+    // Client ID not configured — show a clear notice
+    document.getElementById('google-signin-btn').innerHTML =
+      '<div style="background:#FEF3C7;border:1.5px solid #F59E0B;border-radius:.5rem;padding:.65rem 1rem;font-size:.82rem;color:#92400E;text-align:center">' +
+      '⚠️ Google Client ID not configured.<br>Set <code>GOOGLE_CLIENT_ID</code> in the app code.</div>';
+    return;
+  }
+  google.accounts.id.initialize({
+    client_id:  GOOGLE_CLIENT_ID,
+    callback:   handleGoogleCredential,
+    hd:         ALLOWED_DOMAIN,     // restrict to cookunity.com Google Workspace
+    auto_select: false,
+    ux_mode:    'popup'
+  });
+  google.accounts.id.renderButton(
+    document.getElementById('google-signin-btn'),
+    { theme: 'outline', size: 'large', text: 'signin_with', width: 320, logo_alignment: 'left' }
+  );
+}
+
+function handleGoogleCredential(response) {
+  try {
+    // Decode the JWT payload (no signature verification needed — Google already did it)
+    const payload = JSON.parse(atob(response.credential.split('.')[1]));
+    const email   = (payload.email || '').toLowerCase();
+    const name    = payload.name  || email.split('@')[0];
+
+    // Extra domain check (belt-and-suspenders alongside hd parameter)
+    if (!email.endsWith('@' + ALLOWED_DOMAIN)) {
+      showLoginError(`Only @${ALLOWED_DOMAIN} accounts are allowed.`);
+      return;
+    }
+
+    // Persist user and launch app
+    setUser({ email, name, picture: payload.picture || '' });
+    document.getElementById('login-overlay').classList.remove('show');
+    document.getElementById('navbar').style.display = 'flex';
+    document.getElementById('main-content').style.display = 'block';
+    document.getElementById('login-error').style.display = 'none';
+    initApp();
+  } catch(err) {
+    showLoginError('Sign-in failed. Please try again.');
+  }
+}
+
+function showLoginError(msg) {
+  const el = document.getElementById('login-error');
+  if (el) { el.textContent = msg; el.style.display = 'block'; }
 }
 
 function logout() {
+  // Revoke Google session so next visit shows the picker again
+  if (typeof google !== 'undefined' && google.accounts) {
+    const u = getUser();
+    if (u?.email) google.accounts.id.revoke(u.email, () => {});
+    google.accounts.id.disableAutoSelect();
+  }
   localStorage.removeItem(USER_KEY);
   location.reload();
 }
 
 function showLogin() {
   document.getElementById('login-overlay').classList.add('show');
-  document.getElementById('navbar').style.display='none';
-  document.getElementById('main-content').style.display='none';
+  document.getElementById('navbar').style.display = 'none';
+  document.getElementById('main-content').style.display = 'none';
+  // Re-render Google button in case it wasn't ready on first load
+  initGoogleSSO();
 }
 
 // ══ API ════════════════════════════════════════════════════════════════════════
@@ -3525,11 +3588,16 @@ async function initApp() {
 
 (function boot() {
   const user = getUser();
-  if (!user) { showLogin(); }
-  else {
+  if (!user) {
+    // Show login overlay and initialise the Google SSO button
+    document.getElementById('login-overlay').classList.add('show');
+    document.getElementById('navbar').style.display       = 'none';
+    document.getElementById('main-content').style.display = 'none';
+    initGoogleSSO();
+  } else {
     document.getElementById('login-overlay').classList.remove('show');
-    document.getElementById('navbar').style.display='flex';
-    document.getElementById('main-content').style.display='block';
+    document.getElementById('navbar').style.display       = 'flex';
+    document.getElementById('main-content').style.display = 'block';
     initApp();
   }
 })();
