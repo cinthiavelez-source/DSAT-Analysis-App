@@ -534,7 +534,7 @@ tr:hover td{background:#FAFAFA}
         </div>
         <div style="margin-top:1.5rem;display:flex;gap:.75rem;justify-content:flex-end">
           <button type="button" class="btn btn-secondary" onclick="resetForm()">Clear Form</button>
-          <button type="submit" class="btn btn-primary">Submit DSAT Analysis</button>
+          <button type="submit" class="btn btn-primary" id="dsat-submit-btn">✅ Submit DSAT Analysis</button>
         </div>
       </form>
     </div>
@@ -581,6 +581,7 @@ tr:hover td{background:#FAFAFA}
         <div class="form-group"><label>Lifespan Segment</label><select id="filter-lifespan"><option value="">All Segments</option></select></div>
         <div class="form-group"><label>LTR</label><select id="filter-ltr"><option value="">All LTR</option></select></div>
         <div class="form-group"><label>Contact Reason</label><select id="filter-contact-reason"><option value="">All Reasons</option></select></div>
+        <div class="form-group"><label>Submitted By</label><select id="filter-submitter" onchange="applyFilters()"><option value="">All Submitters</option></select></div>
         <div class="filter-actions">
           <button class="btn btn-primary btn-sm" onclick="applyFilters()">Apply</button>
           <button class="btn btn-warning btn-sm" onclick="clearFilters()">↺ Reset Filters</button>
@@ -604,6 +605,27 @@ tr:hover td{background:#FAFAFA}
       <div>
         <div class="page-title">🔔 Feedback Queue</div>
         <div class="page-sub">Agent-Related DSATs requiring supervisor feedback (15-day SLA)</div>
+      </div>
+    </div>
+    <!-- Queue filters (admin only — supervisors already see only their own) -->
+    <div class="card" id="queue-filter-bar" style="padding:.85rem 1.25rem;margin-bottom:1.25rem;display:none">
+      <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-end">
+        <div class="form-group" style="min-width:200px;margin:0">
+          <label style="font-size:.75rem">Supervisor</label>
+          <select id="queue-filter-supervisor" onchange="renderQueue(cachedData)">
+            <option value="">All Supervisors</option>
+          </select>
+        </div>
+        <div class="form-group" style="min-width:160px;margin:0">
+          <label style="font-size:.75rem">Status</label>
+          <select id="queue-filter-status" onchange="renderQueue(cachedData)">
+            <option value="">All Statuses</option>
+            <option>Pending</option>
+            <option>Disputed</option>
+            <option>Feedback Delivered</option>
+          </select>
+        </div>
+        <button class="btn btn-warning btn-sm" onclick="clearQueueFilters()">↺ Reset Filters</button>
       </div>
     </div>
     <div class="stats-grid" id="queue-stats"></div>
@@ -1337,7 +1359,20 @@ function navTo(page) {
     b.classList.toggle('active', b.dataset.page===page)
   );
   if (page==='dashboard')    renderDashboard(cachedData);
-  else if (page==='records')     renderRecords(cachedData);
+  else if (page==='submit') {
+    // Default today's date on every visit if field is blank
+    const _df = document.getElementById('f-analysis-date');
+    if (_df && !_df.value) _df.value = new Date().toISOString().slice(0,10);
+  }
+  else if (page==='records') {
+    renderRecords(cachedData);
+    // Analysts automatically see only their own submissions (they can clear the filter)
+    if (cachedRole === 'analyst') {
+      const _u = getUser();
+      const _se = document.getElementById('filter-submitter');
+      if (_se && !_se.value && _u?.email) { _se.value = _u.email; renderRecords(cachedData); }
+    }
+  }
   else if (page==='queue')       renderQueue(cachedData);
   else if (page==='analytics')   { buildAnalyticsFilters(); renderAnalytics(); }
   else if (page==='supervisors') { buildSupervisorFilter(); renderSupervisors(); }
@@ -1780,15 +1815,49 @@ async function submitDSAT(e) {
     submittedByName:        u?.name||'',
     submittedByEmail:       u?.email||''
   };
+  const _submitBtn = document.getElementById('dsat-submit-btn');
+  if (_submitBtn) { _submitBtn.disabled = true; _submitBtn.textContent = '⏳ Saving…'; }
   try {
     const res = await apiPost({action:'addDSAT', record});
+    // ── Optimistic local update — skips the slow full re-fetch ─────────────────
+    const _hier = cachedHierarchy.find(h =>
+      h.agentEmail && h.agentEmail.toLowerCase() === (record.specialistEmail||'').toLowerCase()
+    );
+    const _newRec = normalizeRow({
+      id:                       res.id || Date.now().toString(),
+      analysisDate:             record.analysisDate,
+      dsatDate:                 record.dsatDate,
+      ticketId:                 record.ticketId,
+      specialistName:           record.specialistName,
+      specialistEmail:          record.specialistEmail,
+      supervisorName:           document.getElementById('f-supervisor-name')?.value || _hier?.supervisorName || '',
+      supervisorEmail:          _hier?.supervisorEmail || '',
+      managerName:              document.getElementById('f-manager-name')?.value   || _hier?.managerName   || '',
+      mainReason:               record.mainReason,
+      subReason:                record.subReason,
+      isPreventable:            record.isPreventable,
+      supportingDetails:        record.supportingDetails,
+      resolutionProvided:       record.resolutionProvided,
+      improvementOpportunities: record.improvementOpportunities,
+      issueResolved:            record.issueResolved,
+      correctProcessFollowed:   record.correctProcessFollowed,
+      submittedByName:          record.submittedByName,
+      submittedByEmail:         record.submittedByEmail,
+      submittedAt:              new Date().toISOString(),
+      editedFlag: 'FALSE', lastEditedByName: '', lastEditedByEmail: '', lastEditedAt: '',
+      feedbackStatus:           record.mainReason === 'Agent - Related' ? 'Pending' : '',
+      supervisorFeedback: '', feedbackProvidedAt: '', disputeNotes: '',
+      disputeReviewedBy: '', disputeReviewedAt: '',
+      channel: '', customerEmail: '', contactReason: '', lifespanSegment: '', ltr: '', store: ''
+    });
+    cachedData.unshift(_newRec);
     showToast('✅ DSAT submitted successfully!');
     resetForm();
-    const data = await apiFetch();
-    cachedData = data;
     updateRoleUI();
   } catch(err) {
     showToast('❌ Error: '+err.message,'#EF4444');
+  } finally {
+    if (_submitBtn) { _submitBtn.disabled = false; _submitBtn.textContent = '✅ Submit DSAT Analysis'; }
   }
 }
 
@@ -2174,19 +2243,21 @@ function applyCurrentFilters(data) {
   const store   = document.getElementById('filter-store')?.value;
   const lifespan= document.getElementById('filter-lifespan')?.value;
   const ltr     = document.getElementById('filter-ltr')?.value;
-  const contRsn = document.getElementById('filter-contact-reason')?.value;
-  if (from)     d = d.filter(r=>r.dsatDate>=from);
-  if (to)       d = d.filter(r=>r.dsatDate<=to);
-  if (reason)   d = d.filter(r=>r.mainReason===reason);
-  if (sup)      d = d.filter(r=>r.supervisorName===sup);
-  if (fb)       d = d.filter(r=>r.feedbackStatus===fb);
-  if (week)     d = d.filter(r=>r.analysisWeek===week);
-  if (month)    d = d.filter(r=>r.analysisMonth===month);
-  if (channel)  d = d.filter(r=>r.channel===channel);
-  if (store)    d = d.filter(r=>r.store===store);
-  if (lifespan) d = d.filter(r=>r.lifespanSegment===lifespan);
-  if (ltr)      d = d.filter(r=>r.ltr===ltr);
-  if (contRsn)  d = d.filter(r=>r.contactReason===contRsn);
+  const contRsn   = document.getElementById('filter-contact-reason')?.value;
+  const submitter = document.getElementById('filter-submitter')?.value;
+  if (from)      d = d.filter(r=>r.dsatDate>=from);
+  if (to)        d = d.filter(r=>r.dsatDate<=to);
+  if (reason)    d = d.filter(r=>r.mainReason===reason);
+  if (sup)       d = d.filter(r=>r.supervisorName===sup);
+  if (fb)        d = d.filter(r=>r.feedbackStatus===fb);
+  if (week)      d = d.filter(r=>r.analysisWeek===week);
+  if (month)     d = d.filter(r=>r.analysisMonth===month);
+  if (channel)   d = d.filter(r=>r.channel===channel);
+  if (store)     d = d.filter(r=>r.store===store);
+  if (lifespan)  d = d.filter(r=>r.lifespanSegment===lifespan);
+  if (ltr)       d = d.filter(r=>r.ltr===ltr);
+  if (contRsn)   d = d.filter(r=>r.contactReason===contRsn);
+  if (submitter) d = d.filter(r=>r.submittedByEmail===submitter);
   return d;
 }
 
@@ -2194,7 +2265,7 @@ function applyFilters()  { renderRecords(cachedData); }
 function clearFilters()  {
   ['filter-from','filter-to','filter-reason','filter-supervisor','filter-feedback',
    'filter-week','filter-month','filter-channel','filter-store','filter-lifespan',
-   'filter-ltr','filter-contact-reason'].forEach(id=>{
+   'filter-ltr','filter-contact-reason','filter-submitter'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
   });
   renderRecords(cachedData);
@@ -2227,6 +2298,22 @@ function buildSupervisorFilter() {
   fill('filter-lifespan',      segments, 'All Segments');
   fill('filter-ltr',           ltrs,     'All LTR');
   fill('filter-contact-reason',contRsns, 'All Reasons');
+  // Submitter filter — uses email as value, name as label for exact matching
+  const subEl = document.getElementById('filter-submitter');
+  if (subEl) {
+    const prevSub = subEl.value;
+    const seenEmails = new Set();
+    const submitterOpts = [];
+    cachedData.forEach(r => {
+      if (r.submittedByEmail && !seenEmails.has(r.submittedByEmail)) {
+        seenEmails.add(r.submittedByEmail);
+        submitterOpts.push({email: r.submittedByEmail, name: r.submittedByName || r.submittedByEmail});
+      }
+    });
+    submitterOpts.sort((a,b) => a.name.localeCompare(b.name));
+    subEl.innerHTML = '<option value="">All Submitters</option>' +
+      submitterOpts.map(x => `<option value="${escHtml(x.email)}"${x.email===prevSub?' selected':''}>${escHtml(x.name)}</option>`).join('');
+  }
   // Analytics
   fill('analytics-supervisor',      sups,     'All Supervisors');
   fill('analytics-manager',         mgrs,     'All Managers');
@@ -2646,8 +2733,10 @@ async function saveEditRecord() {
     await apiPost({action:'updateDSAT', record});
     showToast('✅ Record updated with audit trail.');
     closeModal('detail-modal');
-    const data = await apiFetch();
-    cachedData = data;
+    // Local update — no full re-fetch needed
+    const _eu = getUser();
+    const _eri = cachedData.findIndex(r => String(r.id) === String(record.id));
+    if (_eri >= 0) cachedData[_eri] = normalizeRow({...cachedData[_eri], ...record, editedFlag:'TRUE', lastEditedByName:_eu?.name||'', lastEditedByEmail:_eu?.email||'', lastEditedAt:new Date().toISOString()});
     renderRecords(cachedData);
   } catch(err) { showToast('❌ '+err.message,'#EF4444'); }
 }
@@ -2659,6 +2748,24 @@ function renderQueue(data) {
   if (!isAdmin()) {
     queue = queue.filter(r=>r.supervisorEmail.toLowerCase()===(u?.email||'').toLowerCase());
   }
+
+  // Show filter bar for admins only; populate supervisor dropdown
+  const filterBar = document.getElementById('queue-filter-bar');
+  if (filterBar) filterBar.style.display = isAdmin() ? '' : 'none';
+  const qSupEl = document.getElementById('queue-filter-supervisor');
+  if (qSupEl && isAdmin()) {
+    const prev = qSupEl.value;
+    const sups = [...new Set(queue.map(r=>r.supervisorName).filter(Boolean))].sort();
+    qSupEl.innerHTML = '<option value="">All Supervisors</option>' +
+      sups.map(s=>`<option${s===prev?' selected':''}>${escHtml(s)}</option>`).join('');
+  }
+
+  // Apply filters
+  const qSup    = document.getElementById('queue-filter-supervisor')?.value || '';
+  const qStatus = document.getElementById('queue-filter-status')?.value     || '';
+  if (qSup)    queue = queue.filter(r => r.supervisorName === qSup);
+  if (qStatus) queue = queue.filter(r => r.feedbackStatus === qStatus);
+
   queue.sort((a,b) => {
     const order = {Disputed:0, Pending:1, 'Feedback Delivered':2};
     return (order[a.feedbackStatus]??3) - (order[b.feedbackStatus]??3);
@@ -2730,6 +2837,13 @@ function slaDaysLeft(submittedAt) {
   return Math.ceil((deadline - new Date())/(24*60*60*1000));
 }
 
+function clearQueueFilters() {
+  ['queue-filter-supervisor','queue-filter-status'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  renderQueue(cachedData);
+}
+
 // ── Feedback Modal ────────────────────────────────────────────────────────────
 function openFeedbackModal(id) {
   document.getElementById('fb-dsat-id').value = id;
@@ -2754,8 +2868,9 @@ async function saveFeedback() {
     await apiPost({action:'submitFeedback', dsatId:id, feedback, status, disputeNotes:dispute});
     showToast('✅ Feedback saved successfully!');
     closeModal('feedback-modal');
-    const data = await apiFetch();
-    cachedData = data;
+    // Local update — no full re-fetch needed
+    const _fbi = cachedData.findIndex(r => r.id === id);
+    if (_fbi >= 0) cachedData[_fbi] = {...cachedData[_fbi], feedbackStatus: status, supervisorFeedback: feedback, feedbackProvidedAt: new Date().toISOString()};
     renderQueue(cachedData);
     updateRoleUI();
   } catch(err) { showToast('❌ '+err.message,'#EF4444'); }
@@ -2869,8 +2984,9 @@ async function saveDisputeReview() {
     await apiPost({action:'disputeReview', dsatId:id, newStatus, record});
     showToast('✅ Dispute resolved.');
     closeModal('detail-modal');
-    const data = await apiFetch();
-    cachedData = data;
+    // Local update — no full re-fetch needed
+    const _dri = cachedData.findIndex(r => r.id === id);
+    if (_dri >= 0) cachedData[_dri] = normalizeRow({...cachedData[_dri], ...record, feedbackStatus: newStatus, disputeReviewedBy: getUser()?.email||'', disputeReviewedAt: new Date().toISOString()});
     renderQueue(cachedData);
   } catch(err) { showToast('❌ '+err.message,'#EF4444'); }
 }
