@@ -527,8 +527,8 @@ tr:hover td{background:#FAFAFA}
 
           <!-- 9. Improvement Opportunities -->
           <div class="form-group full">
-            <label for="f-improvement">9. Improvement Opportunities & Next Steps</label>
-            <textarea id="f-improvement" placeholder="Identify learnings, coaching opportunities, or process improvements…"></textarea>
+            <label for="f-improvement">9. Improvement Opportunities & Next Steps *</label>
+            <textarea id="f-improvement" placeholder="Identify learnings, coaching opportunities, or process improvements…" required></textarea>
           </div>
 
         </div>
@@ -1117,10 +1117,30 @@ const DEFAULT_ADMIN_EMAIL = 'cinthiavelez@cookunity.com';
 const USER_KEY            = 'dsat_user_v1';
 
 // ─── GOOGLE SSO CONFIG ────────────────────────────────────────────────────────
-// Replace this with your Google OAuth Client ID from console.cloud.google.com
 const GOOGLE_CLIENT_ID    = '788780379923-grdcv6cti5m12ie40g76ceotujrv67c9.apps.googleusercontent.com';
-const ALLOWED_DOMAIN      = 'cookunity.com';   // only this Google Workspace domain can sign in
-const SLA_DAYS = 15;
+const ALLOWED_DOMAIN      = 'cookunity.com';
+const SLA_DAYS            = 15;
+
+// ─── LOCAL DATA CACHE (instant re-load on return visits) ─────────────────────
+const DATA_CACHE_KEY = 'dsat_data_v2';
+const DATA_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+function loadDataCache() {
+  try {
+    const raw = localStorage.getItem(DATA_CACHE_KEY);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    if (Date.now() - (obj.ts || 0) > DATA_CACHE_TTL) return null;
+    return obj; // {records (already normalised), hierarchy}
+  } catch(e) { return null; }
+}
+function saveDataCache(records, hierarchy) {
+  try { localStorage.setItem(DATA_CACHE_KEY, JSON.stringify({records, hierarchy, ts: Date.now()})); }
+  catch(e) {} // storage full — fail silently
+}
+function isModalOpen() {
+  return !!document.querySelector('.modal-overlay.open');
+}
 
 // ══ SUB-REASONS MAP ═══════════════════════════════════════════════════════════
 const SUB_REASONS = {
@@ -1248,8 +1268,9 @@ function showLogin() {
 }
 
 // ══ API ════════════════════════════════════════════════════════════════════════
-async function apiFetch() {
-  showLoading(true,'Loading data…');
+// silent=true → no loading overlay, used for background refreshes
+async function apiFetch(silent = false) {
+  if (!silent) showLoading(true,'Loading data…');
   try {
     const u   = getUser();
     const url = u ? `${scriptUrl()}?email=${encodeURIComponent(u.email)}` : scriptUrl();
@@ -1262,18 +1283,22 @@ async function apiFetch() {
     if (data.role) { cachedRole = data.role; updateRoleUI(); }
     buildSupervisorFilter();
     populateSpecialistDropdown();
+    saveDataCache(cachedData, cachedHierarchy); // persist for next visit
     return cachedData;
   } catch(err) {
     console.error(err);
-    showToast('⚠️ Could not load data. Check the script URL.','#EF4444');
+    if (!silent) showToast('⚠️ Could not load data. Check the script URL.','#EF4444');
     return cachedData;
   } finally {
-    showLoading(false);
+    if (!silent) showLoading(false);
   }
 }
 
 async function apiPost(body) {
-  showLoading(true,'Saving…');
+  // Only show the full-page overlay for imports — regular saves use
+  // optimistic local updates so a heavy overlay is no longer needed.
+  const isHeavy = (body.action === 'importEnrichment');
+  if (isHeavy) showLoading(true,'Saving…');
   try {
     const u   = getUser();
     const res = await fetch(scriptUrl(), {
@@ -1285,7 +1310,7 @@ async function apiPost(body) {
     if (data.error) throw new Error(data.error);
     return data;
   } finally {
-    showLoading(false);
+    if (isHeavy) showLoading(false);
   }
 }
 
@@ -3685,26 +3710,45 @@ function clearCorrFilters() {
 async function initApp() {
   const u = getUser();
   document.getElementById('user-name-nav').textContent = u?.name||'—';
-  // Set today's date as default for analysis date
   document.getElementById('f-analysis-date').value = new Date().toISOString().slice(0,10);
-  // Seed analytics month picker to current month
   analyticsMonth = new Date().toISOString().slice(0,7);
   const mEl = document.getElementById('analytics-month');
   if (mEl) mEl.value = analyticsMonth;
   updateRoleUI();
-  const data = await apiFetch();
-  cachedData = data;
-  updateRoleUI();
-  renderDashboard(data);
-  // Auto-refresh every 3 minutes
-  setInterval(async()=>{
-    const d = await apiFetch();
-    cachedData = d;
-    if (currentPage==='dashboard') renderDashboard(d);
-    else if (currentPage==='records') renderRecords(d);
-    else if (currentPage==='queue') renderQueue(d);
+
+  // ── Step 1: render from localStorage cache instantly if available ────────────
+  const cached = loadDataCache();
+  if (cached && cached.records && cached.records.length) {
+    cachedData      = cached.records;   // already normalised when saved
+    cachedHierarchy = cached.hierarchy || [];
     updateRoleUI();
-  }, 180000);
+    buildSupervisorFilter();
+    populateSpecialistDropdown();
+    renderDashboard(cachedData);
+    // ── Step 2: refresh silently in background — no overlay, no disruption ────
+    apiFetch(true).then(d => {
+      cachedData = d;
+      updateRoleUI();
+      if (!isModalOpen()) renderDashboard(d);
+    });
+  } else {
+    // First-ever visit — full blocking fetch (only happens once)
+    const data = await apiFetch();
+    cachedData = data;
+    updateRoleUI();
+    renderDashboard(data);
+  }
+
+  // ── Auto-refresh every 5 minutes — fully silent, never disrupts modals ──────
+  setInterval(async () => {
+    const d = await apiFetch(true); // silent=true
+    cachedData = d;
+    if (isModalOpen()) return; // don't disrupt an open edit/feedback modal
+    if (currentPage==='dashboard')  renderDashboard(d);
+    else if (currentPage==='records')  renderRecords(d);
+    else if (currentPage==='queue')    renderQueue(d);
+    updateRoleUI();
+  }, 300000); // 5 minutes
 }
 
 (function boot() {
