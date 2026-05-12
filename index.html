@@ -2710,10 +2710,14 @@ function updateEditSubReasons() {
 }
 
 async function saveEditRecord() {
+  const _editId  = document.getElementById('edit-id').value;
+  const _orig    = cachedData.find(x => x.id === _editId) || {};
+  // Guard: never overwrite dates with empty — fall back to the original cached value
+  const _safeDate = (inputId, fallback) => document.getElementById(inputId)?.value || fallback || '';
   const record = {
-    id:                       document.getElementById('edit-id').value,
-    analysisDate:             document.getElementById('edit-analysis-date').value,
-    dsatDate:                 document.getElementById('edit-dsat-date').value,
+    id:                       _editId,
+    analysisDate:             _safeDate('edit-analysis-date', _orig.analysisDate),
+    dsatDate:                 _safeDate('edit-dsat-date',     _orig.dsatDate),
     ticketId:                 document.getElementById('edit-ticket-id').value,
     specialistName:           document.getElementById('edit-specialist-name').value,
     specialistEmail:          document.getElementById('edit-specialist-email').value,
