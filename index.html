@@ -829,6 +829,22 @@ tr:hover td{background:#FAFAFA}
 
     <!-- Full-width sub-reason detail -->
     <div id="sup-subreason-detail"></div>
+
+    <!-- ── WoW Feedback Queue Table ─────────────────────────────────────────── -->
+    <div class="card" style="margin-top:1.25rem">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem">
+        <div class="card-title" style="margin:0">🔔 Feedback Queue — Supervisor Tracking (WoW)</div>
+        <div style="display:flex;align-items:center;gap:.5rem">
+          <span style="font-size:.75rem;color:#64748B">Week offset:</span>
+          <button class="btn btn-secondary btn-sm" onclick="supQueueOff--;renderSupFeedbackTable()">◀</button>
+          <span id="sup-queue-period" style="font-size:.8rem;color:#64748B;white-space:nowrap;min-width:140px;text-align:center">—</span>
+          <button class="btn btn-secondary btn-sm" onclick="supQueueOff++;renderSupFeedbackTable()">▶</button>
+        </div>
+      </div>
+      <div class="table-wrap" id="sup-queue-table-wrap">
+        <div class="empty-state"><div class="icon">🔔</div><p>Loading…</p></div>
+      </div>
+    </div>
   </div>
 
   <!-- ── ANALYTICS ─────────────────────────────────────────────────────────── -->
@@ -2391,8 +2407,9 @@ function clearAnalyticsFilters() {
 }
 
 // ══ SUPERVISORS PERFORMANCE ════════════════════════════════════════════════════
-let supMode    = 'WoW';
-let supWeekOff = 0;
+let supMode     = 'WoW';
+let supWeekOff  = 0;
+let supQueueOff = 0;  // week offset for the feedback queue WoW table
 
 const SUP_COLORS = ['#4F46E5','#F59E0B','#10B981','#EF4444','#0EA5E9','#7C3AED','#EC4899','#14B8A6'];
 const MAIN_REASON_COLORS = {
@@ -2594,6 +2611,149 @@ function renderSupervisors() {
 
   html += '</tbody></table>';
   breakdown.innerHTML = html;
+
+  // Render the feedback queue WoW table in the section below
+  renderSupFeedbackTable();
+}
+
+// ── WoW Feedback Queue Table ───────────────────────────────────────────────────
+function renderSupFeedbackTable() {
+  const wrap = document.getElementById('sup-queue-table-wrap');
+  if (!wrap) return;
+
+  // Base data: only Agent-Related records that have a feedback status
+  const base = getSupBaseData().filter(r =>
+    r.mainReason === 'Agent - Related' && r.feedbackStatus !== ''
+  );
+
+  // Supervisors present in this data
+  const supervisors = [...new Set(base.map(r => r.supervisorName).filter(Boolean))].sort();
+  if (!supervisors.length) {
+    wrap.innerHTML = '<div class="empty-state"><div class="icon">🔔</div><p>No Agent-Related DSATs found for selected filters.</p></div>';
+    return;
+  }
+
+  // Build 4-week trend columns ending at current offset
+  const TREND_WEEKS = 4;
+  const trendCols = [];
+  for (let i = TREND_WEEKS - 1; i >= 0; i--) {
+    const wb = getWeekBounds(supQueueOff - i);
+    trendCols.push({ label: shortDate(wb.start), start: wb.start, end: wb.end });
+  }
+  const currWB = getWeekBounds(supQueueOff);
+  document.getElementById('sup-queue-period').textContent =
+    `${shortDate(currWB.start)} – ${shortDate(currWB.end)}`;
+
+  // Status badge helpers
+  const statusDot = s => {
+    if (s === 'Pending')           return '<span style="background:#FEF3C7;color:#92400E;border-radius:99px;padding:.1rem .45rem;font-size:.7rem;font-weight:700">⏳ Pending</span>';
+    if (s === 'Feedback Delivered') return '<span style="background:#D1FAE5;color:#065F46;border-radius:99px;padding:.1rem .45rem;font-size:.7rem;font-weight:700">✅ Done</span>';
+    if (s === 'Disputed')           return '<span style="background:#FEE2E2;color:#991B1B;border-radius:99px;padding:.1rem .45rem;font-size:.7rem;font-weight:700">⚠️ Disputed</span>';
+    return `<span style="color:#94A3B8;font-size:.75rem">${escHtml(s||'—')}</span>`;
+  };
+
+  let html = `<table style="width:100%;font-size:.8rem;border-collapse:collapse">
+    <thead><tr style="background:#F8FAFC">
+      <th style="padding:.6rem .75rem;text-align:left;border-bottom:2px solid #E2E8F0;min-width:140px">Supervisor</th>
+      ${trendCols.map((c,i) => `<th style="padding:.6rem .5rem;text-align:center;border-bottom:2px solid #E2E8F0;color:${i===TREND_WEEKS-1?'#4F46E5':'#94A3B8'};font-size:.72rem;white-space:nowrap">${i===TREND_WEEKS-1?'▶ ':''} ${c.label}</th>`).join('')}
+      <th style="padding:.6rem .5rem;text-align:center;border-bottom:2px solid #E2E8F0;color:#F59E0B;font-size:.72rem">⏳ Pending</th>
+      <th style="padding:.6rem .5rem;text-align:center;border-bottom:2px solid #E2E8F0;color:#10B981;font-size:.72rem">✅ Delivered</th>
+      <th style="padding:.6rem .5rem;text-align:center;border-bottom:2px solid #E2E8F0;color:#EF4444;font-size:.72rem">⚠️ Disputed</th>
+      <th style="padding:.6rem .5rem;text-align:center;border-bottom:2px solid #E2E8F0;color:#EF4444;font-size:.72rem">🚨 SLA Breach</th>
+      <th style="border-bottom:2px solid #E2E8F0;width:24px"></th>
+    </tr></thead><tbody>`;
+
+  supervisors.forEach((sup, idx) => {
+    const supRecs   = base.filter(r => r.supervisorName === sup);
+    const trendVals = trendCols.map(c => filterByPeriod(supRecs, c.start, c.end).length);
+    const currVal   = trendVals[TREND_WEEKS - 1];
+    const prevVal   = trendVals[TREND_WEEKS - 2];
+    const delta     = currVal - prevVal;
+    const deltaHtml = delta === 0 ? '' :
+      delta > 0 ? `<span style="color:#EF4444;font-size:.7rem;margin-left:.2rem">▲${delta}</span>` :
+                  `<span style="color:#10B981;font-size:.7rem;margin-left:.2rem">▼${Math.abs(delta)}</span>`;
+
+    const pending   = supRecs.filter(r => r.feedbackStatus === 'Pending').length;
+    const delivered = supRecs.filter(r => r.feedbackStatus === 'Feedback Delivered').length;
+    const disputed  = supRecs.filter(r => r.feedbackStatus === 'Disputed').length;
+    const slaBreached = supRecs.filter(r => r.feedbackStatus === 'Pending' && slaDaysLeft(r.submittedAt) < 0).length;
+
+    html += `
+      <tr style="border-bottom:1px solid #F1F5F9;cursor:pointer" onclick="toggleSupQueueRow(${idx})">
+        <td style="padding:.65rem .75rem;font-weight:600;color:#1E293B">
+          <span id="sup-q-chev-${idx}" style="color:#94A3B8;margin-right:.4rem;transition:transform .2s;display:inline-block">▶</span>
+          ${escHtml(sup)}
+        </td>
+        ${trendVals.map((v,i) => `<td style="text-align:center;padding:.65rem .5rem;color:${i===TREND_WEEKS-1?'#4F46E5':'#64748B'};font-weight:${i===TREND_WEEKS-1?700:400}">${v>0?v:'—'}${i===TREND_WEEKS-1?deltaHtml:''}</td>`).join('')}
+        <td style="text-align:center;padding:.65rem .5rem">
+          ${pending > 0 ? `<span style="background:#FEF3C7;color:#92400E;padding:.2rem .55rem;border-radius:99px;font-weight:700">${pending}</span>` : '<span style="color:#CBD5E1">0</span>'}
+        </td>
+        <td style="text-align:center;padding:.65rem .5rem">
+          ${delivered > 0 ? `<span style="background:#D1FAE5;color:#065F46;padding:.2rem .55rem;border-radius:99px;font-weight:700">${delivered}</span>` : '<span style="color:#CBD5E1">0</span>'}
+        </td>
+        <td style="text-align:center;padding:.65rem .5rem">
+          ${disputed > 0 ? `<span style="background:#FEE2E2;color:#991B1B;padding:.2rem .55rem;border-radius:99px;font-weight:700">${disputed}</span>` : '<span style="color:#CBD5E1">0</span>'}
+        </td>
+        <td style="text-align:center;padding:.65rem .5rem">
+          ${slaBreached > 0 ? `<span style="background:#FEE2E2;color:#991B1B;padding:.2rem .55rem;border-radius:99px;font-weight:700">🚨 ${slaBreached}</span>` : '<span style="color:#10B981;font-size:.75rem">✓ OK</span>'}
+        </td>
+        <td></td>
+      </tr>
+      <tr id="sup-q-detail-${idx}" style="display:none;background:#FAFAFA">
+        <td colspan="${TREND_WEEKS + 5}" style="padding:.5rem .75rem .75rem 2.5rem">
+          <div style="font-size:.75rem;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem">
+            Individual Tickets — ${escHtml(sup)}
+          </div>
+          <div style="overflow-x:auto">
+            <table style="font-size:.78rem;border-collapse:collapse;min-width:600px">
+              <thead><tr style="background:#F1F5F9">
+                <th style="padding:.4rem .6rem;text-align:left">Ticket</th>
+                <th style="padding:.4rem .6rem;text-align:left">Agent</th>
+                <th style="padding:.4rem .6rem;text-align:left">Sub-Reason</th>
+                <th style="padding:.4rem .6rem;text-align:left">DSAT Date</th>
+                <th style="padding:.4rem .6rem;text-align:left">Submitted</th>
+                <th style="padding:.4rem .6rem;text-align:left">Status</th>
+                <th style="padding:.4rem .6rem;text-align:left">SLA</th>
+              </tr></thead>
+              <tbody>
+                ${supRecs.sort((a,b) => {
+                    const order = {Disputed:0, Pending:1, 'Feedback Delivered':2};
+                    return (order[a.feedbackStatus]??3) - (order[b.feedbackStatus]??3);
+                  }).map(r => {
+                    const daysLeft = slaDaysLeft(r.submittedAt);
+                    const slaColor = daysLeft < 0 ? '#EF4444' : daysLeft <= 3 ? '#F59E0B' : '#10B981';
+                    const slaText  = daysLeft < 0 ? `🚨 ${Math.abs(daysLeft)}d over` : `${daysLeft}d left`;
+                    return `<tr style="border-bottom:1px solid #F1F5F9">
+                      <td style="padding:.4rem .6rem;font-weight:700;color:#4F46E5">#${escHtml(r.ticketId)}</td>
+                      <td style="padding:.4rem .6rem">${escHtml(r.specialistName||'—')}</td>
+                      <td style="padding:.4rem .6rem;color:#64748B;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.subReason)}">${escHtml(r.subReason||'—')}</td>
+                      <td style="padding:.4rem .6rem;white-space:nowrap">${fmtDate(r.dsatDate)}</td>
+                      <td style="padding:.4rem .6rem;white-space:nowrap;color:#64748B">${fmtDate(r.submittedAt?.slice(0,10)||'')}</td>
+                      <td style="padding:.4rem .6rem">${statusDot(r.feedbackStatus)}</td>
+                      <td style="padding:.4rem .6rem;color:${slaColor};font-weight:600;white-space:nowrap;font-size:.75rem">
+                        ${r.feedbackStatus === 'Pending' ? slaText : '—'}
+                      </td>
+                    </tr>`;
+                  }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </td>
+      </tr>`;
+  });
+
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function toggleSupQueueRow(idx) {
+  const row  = document.getElementById(`sup-q-detail-${idx}`);
+  const chev = document.getElementById(`sup-q-chev-${idx}`);
+  if (!row) return;
+  const open = row.style.display === 'table-row';
+  row.style.display  = open ? 'none'       : 'table-row';
+  chev.style.transform = open ? ''         : 'rotate(90deg)';
+  chev.style.color     = open ? '#94A3B8'  : '#4F46E5';
 }
 
 function toggleSupRow(idx) {
