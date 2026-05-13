@@ -3732,11 +3732,27 @@ async function initApp() {
       if (!isModalOpen()) renderDashboard(d);
     });
   } else {
-    // First-ever visit — full blocking fetch (only happens once)
-    const data = await apiFetch();
-    cachedData = data;
-    updateRoleUI();
-    renderDashboard(data);
+    // First visit (no cache yet) — show the UI immediately with a loading
+    // indicator inside the dashboard, then populate once data arrives.
+    // The user never stares at a blank screen regardless of server speed.
+    document.getElementById('dash-stats').innerHTML =
+      `<div style="grid-column:1/-1;padding:2rem;text-align:center;color:#64748B">
+         <div style="font-size:2rem;margin-bottom:.5rem">⏳</div>
+         <div style="font-weight:600">Loading data…</div>
+         <div style="font-size:.8rem;margin-top:.25rem">This may take up to 30 seconds on first load — subsequent visits will be instant.</div>
+       </div>`;
+    apiFetch(true)   // silent — no full-page overlay
+      .then(d => {
+        cachedData = d;
+        updateRoleUI();
+        if (!isModalOpen()) renderDashboard(d);
+      })
+      .catch(() => {
+        document.getElementById('dash-stats').innerHTML =
+          `<div style="grid-column:1/-1;padding:1.5rem;text-align:center;color:#EF4444">
+             ⚠️ Could not load data. Check the Script URL in Admin settings.
+           </div>`;
+      });
   }
 
   // ── Auto-refresh every 5 minutes — fully silent, never disrupts modals ──────
