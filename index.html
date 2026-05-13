@@ -292,9 +292,6 @@ tr:hover td{background:#FAFAFA}
     <button class="nav-btn" data-page="supervisors" onclick="navTo('supervisors')" id="nav-supervisors" style="display:none">
       <span>👥</span><span class="nav-label">Supervisors</span>
     </button>
-    <button class="nav-btn" data-page="guide" onclick="navTo('guide')" id="nav-guide">
-      <span>📖</span><span class="nav-label">Guide</span>
-    </button>
     <button class="nav-btn" data-page="corrections" onclick="navTo('corrections')" id="nav-corrections" style="display:none">
       <span>✏️</span><span class="nav-label">Corrections</span>
     </button>
@@ -551,6 +548,7 @@ tr:hover td{background:#FAFAFA}
     </div>
     <div class="card">
       <div class="filters-row">
+        <div class="form-group"><label>Ticket ID</label><input type="text" id="filter-ticket" placeholder="e.g. 1234567" oninput="applyFilters()"></div>
         <div class="form-group"><label>Date Range (from)</label><input type="date" id="filter-from"></div>
         <div class="form-group"><label>Date Range (to)</label><input type="date" id="filter-to"></div>
         <div class="form-group">
@@ -589,10 +587,10 @@ tr:hover td{background:#FAFAFA}
       </div>
       <div class="table-wrap"><table id="records-table">
         <thead><tr>
-          <th>Ticket</th><th>DSAT Date</th><th>Week</th><th>Specialist</th><th>Supervisor</th>
+          <th>Ticket / Actions</th><th>DSAT Date</th><th>Week</th><th>Specialist</th><th>Supervisor</th>
           <th>Main Reason</th><th>Sub-Reason</th><th>Channel</th><th>Store</th><th>LTR</th>
           <th>Lifespan Segment</th><th>Contact Reason</th><th>Customer Email</th>
-          <th>Preventable</th><th>Resolved</th><th>Feedback</th><th>Submitted By</th><th>Actions</th>
+          <th>Preventable</th><th>Resolved</th><th>Feedback</th><th>Submitted By</th>
         </tr></thead>
         <tbody id="records-tbody"></tbody>
       </table></div>
@@ -2224,13 +2222,20 @@ function renderRecords(data) {
     `${filtered.length} record${filtered.length!==1?'s':''} found · ✏ Corrections ratio: ${corrRatio}% (${editedCount} edited)`;
   const tbody = document.getElementById('records-tbody');
   if (!filtered.length) {
-    tbody.innerHTML='<tr><td colspan="18"><div class="empty-state"><div class="icon">🔍</div><p>No records match your filters.</p></div></td></tr>';
+    tbody.innerHTML='<tr><td colspan="17"><div class="empty-state"><div class="icon">🔍</div><p>No records match your filters.</p></div></td></tr>';
     return;
   }
   tbody.innerHTML = filtered.sort((a,b)=>b.id.localeCompare(a.id)).map(r => {
     const edited = r.editedFlag==='TRUE'||r.editedFlag===true;
     return `<tr class="${edited?'tr-edited':''}">
-      <td><strong>#${escHtml(r.ticketId)}</strong>${edited?'<br><span class="badge badge-edited">✏ Edited</span>':''}</td>
+      <td style="white-space:nowrap">
+        <div style="display:flex;align-items:center;gap:.4rem;flex-wrap:wrap">
+          <strong>#${escHtml(r.ticketId)}</strong>
+          <button class="btn btn-secondary btn-sm" onclick="openDetail('${r.id}')">View</button>
+          ${isAdmin()?`<button class="btn btn-primary btn-sm" onclick="openEditModal('${r.id}')">Edit</button>`:''}
+        </div>
+        ${edited?'<span class="badge badge-edited" style="margin-top:.25rem">✏ Edited</span>':''}
+      </td>
       <td>${fmtDate(r.dsatDate)}</td>
       <td><small style="color:#64748B">${escHtml(r.analysisWeek||'—')}</small></td>
       <td>${escHtml(r.specialistName)}</td>
@@ -2247,16 +2252,13 @@ function renderRecords(data) {
       <td>${yesnoBadge(r.issueResolved)}</td>
       <td>${feedbackBadge(r.feedbackStatus)}</td>
       <td><small>${escHtml(r.submittedByName||'—')}</small></td>
-      <td style="white-space:nowrap">
-        <button class="btn btn-secondary btn-sm" onclick="openDetail('${r.id}')">View</button>
-        ${isAdmin()?`<button class="btn btn-primary btn-sm" onclick="openEditModal('${r.id}')">Edit</button>`:''}
-      </td>
     </tr>`;
   }).join('');
 }
 
 function applyCurrentFilters(data) {
   let d = [...data];
+  const ticket  = (document.getElementById('filter-ticket')?.value || '').trim().toLowerCase();
   const from    = document.getElementById('filter-from')?.value;
   const to      = document.getElementById('filter-to')?.value;
   const reason  = document.getElementById('filter-reason')?.value;
@@ -2270,6 +2272,7 @@ function applyCurrentFilters(data) {
   const ltr     = document.getElementById('filter-ltr')?.value;
   const contRsn   = document.getElementById('filter-contact-reason')?.value;
   const submitter = document.getElementById('filter-submitter')?.value;
+  if (ticket)    d = d.filter(r => r.ticketId.toLowerCase().includes(ticket));
   if (from)      d = d.filter(r=>r.dsatDate>=from);
   if (to)        d = d.filter(r=>r.dsatDate<=to);
   if (reason)    d = d.filter(r=>r.mainReason===reason);
@@ -2288,7 +2291,7 @@ function applyCurrentFilters(data) {
 
 function applyFilters()  { renderRecords(cachedData); }
 function clearFilters()  {
-  ['filter-from','filter-to','filter-reason','filter-supervisor','filter-feedback',
+  ['filter-ticket','filter-from','filter-to','filter-reason','filter-supervisor','filter-feedback',
    'filter-week','filter-month','filter-channel','filter-store','filter-lifespan',
    'filter-ltr','filter-contact-reason','filter-submitter'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
