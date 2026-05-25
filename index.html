@@ -1370,12 +1370,16 @@ function normalizeRow(r) {
 }
 
 function calcWeek(dateStr) {
+  // Weeks run Sun → Sat; week number is based on the Sunday that starts the week
   if (!dateStr || dateStr.length < 8) return '';
   const d = new Date(dateStr);
   if (isNaN(d)) return '';
-  const jan1 = new Date(d.getFullYear(), 0, 1);
-  const week = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
-  return `W${String(week).padStart(2,'0')} ${d.getFullYear()}`;
+  const dow  = d.getDay();                          // Sun=0 … Sat=6
+  const sun  = new Date(d);
+  sun.setDate(d.getDate() - dow);                   // roll back to Sunday
+  const jan1 = new Date(sun.getFullYear(), 0, 1);
+  const week = Math.ceil(((sun - jan1) / 86400000 + 1) / 7);
+  return `W${String(week).padStart(2,'0')} ${sun.getFullYear()}`;
 }
 
 function calcMonth(dateStr) {
@@ -1596,15 +1600,16 @@ let analyticsMonth   = '';   // YYYY-MM
 let expandedReasons  = new Set();
 
 function getWeekBounds(offset) {
+  // Weeks run Sun → Sat
   const now = new Date();
-  const dow = now.getDay() || 7;                  // Mon=1 … Sun=7
-  const mon = new Date(now);
-  mon.setDate(now.getDate() - dow + 1 + offset * 7);
-  mon.setHours(0, 0, 0, 0);
-  const sun = new Date(mon);
-  sun.setDate(mon.getDate() + 6);
-  sun.setHours(23, 59, 59, 999);
-  return { start: mon, end: sun };
+  const dow = now.getDay();                        // Sun=0, Mon=1 … Sat=6
+  const sun = new Date(now);
+  sun.setDate(now.getDate() - dow + offset * 7);  // back to Sunday
+  sun.setHours(0, 0, 0, 0);
+  const sat = new Date(sun);
+  sat.setDate(sun.getDate() + 6);                 // forward to Saturday
+  sat.setHours(23, 59, 59, 999);
+  return { start: sun, end: sat };
 }
 
 function getMonthBounds(ym) {
