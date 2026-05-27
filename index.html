@@ -669,14 +669,105 @@ tr:hover td{background:#FAFAFA}
     <div class="admin-section" id="admin-hierarchy">
       <div class="card">
         <div class="card-title">Agent–Supervisor Hierarchy</div>
-        <div class="hier-actions">
-          <input type="text" id="hier-search" placeholder="Search by name or email…" style="width:240px" oninput="renderHierarchyTable()">
+        <div class="hier-actions" style="flex-wrap:wrap;gap:.5rem">
+          <input type="text" id="hier-search" placeholder="Search by name or email…" style="width:200px" oninput="renderHierarchyTable()">
+          <label style="font-size:.78rem;font-weight:600;color:#374151;white-space:nowrap;display:flex;align-items:center;gap:.4rem;margin:0">
+            📅 View as of:
+            <input type="date" id="hier-asof-date" style="font-size:.8rem;width:150px"
+              value="${new Date().toISOString().slice(0,10)}" oninput="renderHierarchyTable()">
+          </label>
+          <button class="btn btn-secondary btn-sm" onclick="toggleHierarchyHistory()" id="hier-history-btn">📜 Show History</button>
           <button class="btn btn-primary btn-sm" onclick="openHierarchyModal()">+ Add Agent</button>
+          <button class="btn btn-secondary btn-sm" onclick="downloadHierarchyCSV()">⬇ Export CSV</button>
         </div>
         <div class="table-wrap"><table>
-          <thead><tr><th>Agent Name</th><th>Email</th><th>Role</th><th>Supervisor</th><th>Manager</th><th>Tenure</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Agent Name</th><th>Email</th><th>Role</th><th>Supervisor</th><th>Manager</th><th>Tenure</th><th>Effective From</th><th>Actions</th></tr></thead>
           <tbody id="hier-tbody"></tbody>
         </table></div>
+      </div>
+
+      <!-- Bulk CSV Import -->
+      <div class="card" style="margin-top:1.25rem">
+        <div class="card-title">📥 Bulk Import / Update Hierarchy (CSV)</div>
+        <p style="font-size:.85rem;color:#475569;margin-bottom:.75rem">
+          Use this every quarter to refresh the org chart. Old entries are <strong>never deleted</strong> —
+          every import creates a new versioned snapshot starting on the date you choose.
+          Historical data stays intact so past DSAT reports always show the correct supervisor.
+        </p>
+        <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:.5rem;padding:.65rem 1rem;font-size:.82rem;color:#1E40AF;margin-bottom:1.25rem">
+          💡 <strong>Full Snapshot</strong> — imports the complete current org chart as of the chosen date (recommended quarterly).<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;<strong>Changed Only</strong> — only creates new versions for agents whose supervisor or manager actually changed.
+        </div>
+
+        <!-- Column reference -->
+        <div style="overflow-x:auto;margin-bottom:1.25rem">
+          <table style="font-size:.78rem;width:auto;border-collapse:collapse">
+            <thead><tr style="background:#F8FAFC">
+              <th style="padding:.4rem .75rem;border-bottom:2px solid #E2E8F0">Column (CSV header)</th>
+              <th style="padding:.4rem .75rem;border-bottom:2px solid #E2E8F0">Required?</th>
+              <th style="padding:.4rem .75rem;border-bottom:2px solid #E2E8F0">Example</th>
+            </tr></thead>
+            <tbody>
+              ${[
+                ['AGENT_NAME','Required','Maria Castañeda'],
+                ['AGENT_EMAIL','Required (key)','maria@cookunity.com'],
+                ['ROLE','Optional','agent'],
+                ['SUPERVISOR_NAME','Required','Paola Pirela'],
+                ['SUPERVISOR_EMAIL','Required','paola@cookunity.com'],
+                ['MANAGER_NAME','Optional','Gabriel Gonzalez'],
+                ['MANAGER_EMAIL','Optional','gabriel@cookunity.com'],
+                ['TENURE','Optional','12 months'],
+              ].map(([col,req,ex])=>`<tr style="border-bottom:1px solid #F1F5F9">
+                <td style="padding:.4rem .75rem;font-family:monospace;color:#4F46E5">${col}</td>
+                <td style="padding:.4rem .75rem;color:${req==='Required'||req.includes('key')?'#EF4444':'#94A3B8'}">${req}</td>
+                <td style="padding:.4rem .75rem;color:#64748B">${ex}</td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+        <button class="btn btn-secondary btn-sm" style="margin-bottom:1.25rem" onclick="downloadHierarchyTemplate()">⬇ Download Template CSV</button>
+
+        <!-- Effective-from date picker -->
+        <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:1.25rem;background:#F8FAFC;border:1.5px solid #E2E8F0;border-radius:.5rem;padding:.75rem 1rem">
+          <label style="font-size:.82rem;font-weight:600;color:#374151;white-space:nowrap">📅 Effective from date</label>
+          <input type="date" id="hier-effective-date" style="width:180px;font-size:.85rem"
+            value="${new Date().toISOString().slice(0,10)}">
+          <span style="font-size:.78rem;color:#64748B">New assignments take effect from this date. All previous org relationships are preserved.</span>
+        </div>
+
+        <!-- Upload area -->
+        <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:1rem">
+          <label class="btn btn-secondary" style="cursor:pointer;margin:0">
+            📂 Choose CSV File
+            <input type="file" accept=".csv,.txt,.tsv" style="display:none" onchange="previewHierarchyCSV(this)">
+          </label>
+          <span id="hier-file-name" style="font-size:.85rem;color:#64748B">No file selected</span>
+        </div>
+
+        <!-- Preview -->
+        <div id="hier-import-preview" style="display:none;margin-bottom:1rem">
+          <div style="background:#F0FDF4;border:1.5px solid #10B981;border-radius:.5rem;padding:.75rem 1rem;font-size:.85rem;color:#065F46;margin-bottom:.75rem">
+            <strong id="hier-preview-msg">—</strong>
+          </div>
+          <div style="overflow-x:auto;max-height:220px;border:1px solid #E2E8F0;border-radius:.5rem">
+            <table style="font-size:.75rem;width:100%;border-collapse:collapse" id="hier-preview-table">
+              <thead id="hier-preview-head"></thead>
+              <tbody id="hier-preview-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="hier-import-error" style="display:none;background:#FEE2E2;border:1.5px solid #EF4444;border-radius:.5rem;padding:.6rem .85rem;font-size:.82rem;color:#991B1B;margin-bottom:.75rem"></div>
+
+        <div style="display:flex;gap:.75rem;flex-wrap:wrap">
+          <button class="btn btn-primary" id="hier-upsert-btn" onclick="importHierarchyCSV('full')" disabled>
+            📸 Full Snapshot (Recommended)
+          </button>
+          <button class="btn btn-secondary" id="hier-replace-btn" onclick="importHierarchyCSV('upsert')" disabled>
+            🔀 Changed Only
+          </button>
+        </div>
+        <div id="hier-import-status" style="margin-top:.75rem;font-size:.82rem;color:#64748B"></div>
       </div>
     </div>
 
@@ -1188,9 +1279,10 @@ const SUB_REASONS = {
 };
 
 // ══ STATE ══════════════════════════════════════════════════════════════════════
-let cachedData      = [];
-let cachedHierarchy = [];
-let cachedRole      = 'viewer';
+let cachedData         = [];
+let cachedHierarchy    = [];   // active rows only (one per agent, most recent effectiveFrom ≤ today)
+let cachedHierarchyAll = [];   // all rows including historical — used for admin history view
+let cachedRole         = 'viewer';
 let cachedRoles     = [];
 let currentPage     = 'dashboard';
 let chartInstances  = {};
@@ -1292,8 +1384,9 @@ async function apiFetch(silent = false) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (data.error) throw new Error(data.error);
-    cachedData      = (data.records   || []).map(normalizeRow);
-    cachedHierarchy = (data.hierarchy || []);
+    cachedData         = (data.records      || []).map(normalizeRow);
+    cachedHierarchy    = (data.hierarchy    || []);
+    cachedHierarchyAll = (data.hierarchyAll || cachedHierarchy);
     if (data.role) { cachedRole = data.role; updateRoleUI(); }
     buildSupervisorFilter();
     populateSpecialistDropdown();
@@ -3228,29 +3321,70 @@ async function removeRole(email) {
 }
 
 // ══ ADMIN — HIERARCHY ════════════════════════════════════════════════════════
+
+let _hierShowHistory = false;
+
+function toggleHierarchyHistory() {
+  _hierShowHistory = !_hierShowHistory;
+  const btn = document.getElementById('hier-history-btn');
+  if (btn) btn.textContent = _hierShowHistory ? '📋 Hide History' : '📜 Show History';
+  renderHierarchyTable();
+}
+
+// Return the "active" row per agent as of a given date using the full history.
+function _hierAsOf(dateStr) {
+  const asOf = dateStr || new Date().toISOString().slice(0,10);
+  const pool = (cachedHierarchyAll.length ? cachedHierarchyAll : cachedHierarchy);
+  const byEmail = {};
+  for (const h of pool) {
+    const email = (h.agentEmail||'').toLowerCase().trim();
+    if (!email) continue;
+    const eff = String(h.effectiveFrom||'').trim();
+    if (eff && eff > asOf) continue;
+    const ex = byEmail[email];
+    const exEff = ex ? String(ex.effectiveFrom||'').trim() : '';
+    if (!ex || eff >= exEff) byEmail[email] = h;
+  }
+  return Object.values(byEmail);
+}
+
 function renderHierarchyTable() {
-  const q = (document.getElementById('hier-search')?.value||'').toLowerCase();
-  const data = q
-    ? cachedHierarchy.filter(h=>(h.agentName||'').toLowerCase().includes(q)||(h.agentEmail||'').toLowerCase().includes(q)||(h.supervisorName||'').toLowerCase().includes(q))
-    : cachedHierarchy;
+  const q     = (document.getElementById('hier-search')?.value||'').toLowerCase();
+  const asOf  = document.getElementById('hier-asof-date')?.value || new Date().toISOString().slice(0,10);
+  const pool  = _hierShowHistory
+    ? (cachedHierarchyAll.length ? cachedHierarchyAll : cachedHierarchy)
+    : _hierAsOf(asOf);
+  const data  = q
+    ? pool.filter(h=>(h.agentName||'').toLowerCase().includes(q)||(h.agentEmail||'').toLowerCase().includes(q)||(h.supervisorName||'').toLowerCase().includes(q))
+    : pool;
   const tbody = document.getElementById('hier-tbody');
   if (!data.length) {
-    tbody.innerHTML='<tr><td colspan="7"><div class="empty-state"><div class="icon">🏗</div><p>No hierarchy data.</p></div></td></tr>';
+    tbody.innerHTML='<tr><td colspan="8"><div class="empty-state"><div class="icon">🏗</div><p>No hierarchy data for this date.</p></div></td></tr>';
     return;
   }
-  tbody.innerHTML = data.map(h=>`
-    <tr>
+  // In history mode, sort by email then effectiveFrom so versions are grouped
+  const sorted = _hierShowHistory
+    ? [...data].sort((a,b)=>(a.agentEmail||'').localeCompare(b.agentEmail||'')||(a.effectiveFrom||'').localeCompare(b.effectiveFrom||''))
+    : data;
+  tbody.innerHTML = sorted.map(h=>{
+    const isHistory = _hierShowHistory;
+    const eff = h.effectiveFrom || '';
+    const rowStyle = isHistory && eff ? '' : '';
+    return `
+    <tr style="${rowStyle}">
       <td><strong>${escHtml(h.agentName)}</strong></td>
       <td><small>${escHtml(h.agentEmail)}</small></td>
       <td><span class="badge" style="background:#F1F5F9;color:#374151">${escHtml(h.role||'—')}</span></td>
       <td>${escHtml(h.supervisorName||'—')}</td>
       <td>${escHtml(h.managerName||'—')}</td>
       <td>${escHtml(h.tenure||'—')}</td>
+      <td><span style="font-size:.78rem;color:${eff?'#4F46E5':'#94A3B8'}">${eff||'—'}</span></td>
       <td style="white-space:nowrap">
-        <button class="btn btn-secondary btn-sm" onclick="editHierarchyRow(${JSON.stringify(h.agentEmail)})">Edit</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteHierarchyRow(${JSON.stringify(h.agentEmail)}, ${JSON.stringify(h.agentName)})">✕</button>
+        ${!isHistory ? `<button class="btn btn-secondary btn-sm" onclick="editHierarchyRow(${JSON.stringify(h.agentEmail)})">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteHierarchyRow(${JSON.stringify(h.agentEmail)}, ${JSON.stringify(h.agentName)})">✕</button>` : '<span style="font-size:.75rem;color:#94A3B8">history</span>'}
       </td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 }
 
 function openHierarchyModal(email) {
@@ -3308,6 +3442,152 @@ async function deleteHierarchyRow(email, name) {
     renderHierarchyTable();
   } catch(err) { showToast('❌ '+err.message,'#EF4444'); }
 }
+
+// ── HIERARCHY: CSV BULK IMPORT ───────────────────────────────────────────────
+
+let _hierCsvRows = [];   // holds parsed rows until user confirms
+
+function downloadHierarchyTemplate() {
+  const csv = 'AGENT_NAME,AGENT_EMAIL,ROLE,SUPERVISOR_NAME,SUPERVISOR_EMAIL,MANAGER_NAME,MANAGER_EMAIL,TENURE\n';
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+  a.download = 'hierarchy_template.csv';
+  a.click();
+}
+
+function downloadHierarchyCSV() {
+  // Export the current active hierarchy (as of today) — ready to re-import
+  const asOf    = document.getElementById('hier-asof-date')?.value || new Date().toISOString().slice(0,10);
+  const source  = _hierShowHistory
+    ? (cachedHierarchyAll.length ? cachedHierarchyAll : cachedHierarchy)
+    : _hierAsOf(asOf);
+  const headers = ['AGENT_NAME','AGENT_EMAIL','ROLE','SUPERVISOR_NAME','SUPERVISOR_EMAIL','MANAGER_NAME','MANAGER_EMAIL','TENURE'];
+  const rows = source.map(h =>
+    [h.agentName,h.agentEmail,h.role,h.supervisorName,h.supervisorEmail,h.managerName,h.managerEmail,h.tenure]
+      .map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(',')
+  );
+  const csv = [headers.join(','), ...rows].join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download = `hierarchy_export_${asOf}.csv`;
+  a.click();
+}
+
+function _parseHierCSV(text) {
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const lines = text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n').filter(l=>l.trim());
+  if (lines.length < 2) return { error: 'File is empty or has only headers.' };
+  const first = lines[0];
+  const delim = (first.match(/\t/g)||[]).length >= (first.match(/,/g)||[]).length ? '\t' : ',';
+  function parseLine(line) {
+    if (delim==='\t') return line.split('\t').map(s=>s.trim());
+    const fields=[]; let cur='',inQ=false;
+    for(let i=0;i<line.length;i++){
+      const c=line[i];
+      if(inQ){if(c==='"'&&line[i+1]==='"'){cur+='"';i++;}else if(c==='"'){inQ=false;}else cur+=c;}
+      else if(c==='"'){inQ=true;}else if(c===','){fields.push(cur.trim());cur='';}else cur+=c;
+    }
+    fields.push(cur.trim()); return fields;
+  }
+  const headers = parseLine(lines[0]).map(h=>h.toUpperCase().replace(/\s+/g,'_'));
+  const required = ['AGENT_NAME','AGENT_EMAIL','SUPERVISOR_NAME','SUPERVISOR_EMAIL'];
+  const missing  = required.filter(r=>!headers.includes(r));
+  if (missing.length) return { error: `Missing required columns: ${missing.join(', ')}` };
+  const idx = k => headers.indexOf(k);
+  const rows = [];
+  for (let i=1;i<lines.length;i++) {
+    const cols = parseLine(lines[i]);
+    const agentEmail = (cols[idx('AGENT_EMAIL')]||'').toLowerCase().trim();
+    if (!agentEmail) continue;
+    rows.push({
+      agentName:       cols[idx('AGENT_NAME')]||'',
+      agentEmail,
+      role:            idx('ROLE')>=0 ? cols[idx('ROLE')]||'' : '',
+      supervisorName:  cols[idx('SUPERVISOR_NAME')]||'',
+      supervisorEmail: (cols[idx('SUPERVISOR_EMAIL')]||'').toLowerCase().trim(),
+      managerName:     idx('MANAGER_NAME')>=0 ? cols[idx('MANAGER_NAME')]||'' : '',
+      managerEmail:    idx('MANAGER_EMAIL')>=0 ? (cols[idx('MANAGER_EMAIL')]||'').toLowerCase().trim() : '',
+      tenure:          idx('TENURE')>=0 ? cols[idx('TENURE')]||'' : ''
+    });
+  }
+  if (!rows.length) return { error: 'No valid rows found (check AGENT_EMAIL column).' };
+  return { rows };
+}
+
+function previewHierarchyCSV(input) {
+  const errDiv    = document.getElementById('hier-import-error');
+  const prevDiv   = document.getElementById('hier-import-preview');
+  const upsertBtn = document.getElementById('hier-upsert-btn');
+  const replaceBtn= document.getElementById('hier-replace-btn');
+  errDiv.style.display  = 'none';
+  prevDiv.style.display = 'none';
+  upsertBtn.disabled    = true;
+  replaceBtn.disabled   = true;
+  _hierCsvRows          = [];
+  const file = input.files[0];
+  if (!file) return;
+  document.getElementById('hier-file-name').textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const { rows, error } = _parseHierCSV(ev.target.result);
+    if (error) { errDiv.textContent = error; errDiv.style.display='block'; return; }
+    _hierCsvRows = rows;
+    document.getElementById('hier-preview-msg').textContent =
+      `${rows.length} row${rows.length!==1?'s':''} parsed — review before importing.`;
+    const ths = ['AGENT_NAME','AGENT_EMAIL','ROLE','SUPERVISOR_NAME','SUPERVISOR_EMAIL','MANAGER_NAME','MANAGER_EMAIL','TENURE'];
+    document.getElementById('hier-preview-head').innerHTML =
+      '<tr>'+ths.map(h=>`<th style="padding:.35rem .6rem;background:#F8FAFC;border-bottom:2px solid #E2E8F0;font-size:.72rem;white-space:nowrap">${h}</th>`).join('')+'</tr>';
+    const show = rows.slice(0,10);
+    document.getElementById('hier-preview-body').innerHTML =
+      show.map(r=>`<tr>${[r.agentName,r.agentEmail,r.role,r.supervisorName,r.supervisorEmail,r.managerName,r.managerEmail,r.tenure]
+        .map(v=>`<td style="padding:.3rem .6rem;border-bottom:1px solid #F1F5F9;font-size:.75rem">${escHtml(v||'')}</td>`).join('')}</tr>`).join('')
+      + (rows.length>10 ? `<tr><td colspan="8" style="padding:.4rem .6rem;color:#94A3B8;font-size:.75rem">… and ${rows.length-10} more rows</td></tr>` : '');
+    prevDiv.style.display  = 'block';
+    upsertBtn.disabled     = false;
+    replaceBtn.disabled    = false;
+  };
+  reader.readAsText(file);
+}
+
+async function importHierarchyCSV(mode) {
+  if (!_hierCsvRows.length) { showToast('No rows to import.','#EF4444'); return; }
+  const statusDiv    = document.getElementById('hier-import-status');
+  const errDiv       = document.getElementById('hier-import-error');
+  const upsertBtn    = document.getElementById('hier-upsert-btn');
+  const replaceBtn   = document.getElementById('hier-replace-btn');
+  const effectiveFrom= document.getElementById('hier-effective-date')?.value || new Date().toISOString().slice(0,10);
+  errDiv.style.display = 'none';
+  const label = mode === 'full'
+    ? `Import full org-chart snapshot (${_hierCsvRows.length} agents) effective from ${effectiveFrom}? Old hierarchy data is preserved.`
+    : `Import changed-only rows effective from ${effectiveFrom}? Only agents with a new supervisor or manager will be updated.`;
+  if (!confirm(label)) return;
+  upsertBtn.disabled  = true;
+  replaceBtn.disabled = true;
+  statusDiv.textContent = '⏳ Uploading…';
+  try {
+    const res = await apiPost({ action: 'importHierarchy', mode, rows: _hierCsvRows, effectiveFrom });
+    if (res.error) throw new Error(res.error);
+    const parts = [];
+    if (res.added)   parts.push(`${res.added} new agents`);
+    if (res.updated) parts.push(`${res.updated} updated`);
+    if (res.skipped) parts.push(`${res.skipped} unchanged (skipped)`);
+    statusDiv.textContent = `✅ Done effective ${res.effectiveFrom||effectiveFrom} — ${parts.join(', ') || 'no changes'}.`;
+    showToast('✅ Hierarchy import complete!');
+    await apiFetch();   // updates cachedHierarchy, cachedHierarchyAll, populateSpecialistDropdown
+    renderHierarchyTable();
+    _hierCsvRows = [];
+    upsertBtn.disabled  = true;
+    replaceBtn.disabled = true;
+  } catch(err) {
+    errDiv.textContent   = '❌ ' + err.message;
+    errDiv.style.display = 'block';
+    statusDiv.textContent = '';
+    upsertBtn.disabled  = false;
+    replaceBtn.disabled = false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function switchAdminTab(tab) {
   const tabs = ['roles','hierarchy','import'];
