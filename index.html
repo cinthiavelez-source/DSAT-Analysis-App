@@ -627,6 +627,7 @@ tr:hover td{background:#FAFAFA}
       </div>
     </div>
     <div class="stats-grid" id="queue-stats"></div>
+    <div id="queue-sup-summary"></div>
     <div id="queue-list"></div>
   </div>
 
@@ -768,6 +769,58 @@ tr:hover td{background:#FAFAFA}
           </button>
         </div>
         <div id="hier-import-status" style="margin-top:.75rem;font-size:.82rem;color:#64748B"></div>
+      </div>
+
+      <!-- Re-attribute Supervisors -->
+      <div class="card" style="margin-top:1.25rem">
+        <div class="card-title">🔄 Re-attribute Supervisors</div>
+        <p style="font-size:.85rem;color:#475569;margin-bottom:.75rem">
+          If DSATs were submitted before you ran a hierarchy import, they may still show the old supervisor.
+          This tool scans every DSAT on or after your chosen date, looks up the correct supervisor using the
+          versioned hierarchy for <em>that specific DSAT date</em>, and shows you exactly what would change before you commit.
+        </p>
+        <div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:.5rem;padding:.65rem 1rem;font-size:.82rem;color:#92400E;margin-bottom:1.25rem">
+          ⚠️ This only updates <strong>Supervisor</strong> and <strong>Manager</strong> fields on the DSAT record.
+          All audit content, DSAT Date, and submission details remain untouched.
+        </div>
+
+        <!-- Date picker -->
+        <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:1.25rem;background:#F8FAFC;border:1.5px solid #E2E8F0;border-radius:.5rem;padding:.75rem 1rem">
+          <label style="font-size:.82rem;font-weight:600;color:#374151;white-space:nowrap;display:flex;align-items:center;gap:.4rem;margin:0">
+            📅 Re-attribute from:
+            <input type="date" id="reattr-from-date" style="width:180px;font-size:.85rem"
+              value="${new Date().toISOString().slice(0,10)}">
+          </label>
+          <span style="font-size:.78rem;color:#64748B">All DSATs with a DSAT Date on or after this date will be checked.</span>
+        </div>
+
+        <button class="btn btn-primary" onclick="previewReattribute()" id="reattr-preview-btn">🔍 Preview Changes</button>
+
+        <!-- Preview area — hidden until "Preview" clicked -->
+        <div id="reattr-preview-wrap" style="display:none;margin-top:1.25rem">
+          <div id="reattr-status-box" style="background:#F0FDF4;border:1.5px solid #10B981;border-radius:.5rem;padding:.75rem 1rem;font-size:.85rem;color:#065F46;margin-bottom:.75rem">
+            <span id="reattr-status-msg">—</span>
+          </div>
+          <div id="reattr-table-outer" style="display:none;overflow-x:auto;max-height:340px;border:1px solid #E2E8F0;border-radius:.5rem;margin-bottom:.75rem">
+            <table style="font-size:.78rem;width:100%;border-collapse:collapse">
+              <thead>
+                <tr style="position:sticky;top:0;z-index:1">
+                  <th style="padding:.45rem .75rem;background:#F8FAFC;border-bottom:2px solid #E2E8F0;white-space:nowrap">Ticket</th>
+                  <th style="padding:.45rem .75rem;background:#F8FAFC;border-bottom:2px solid #E2E8F0">Specialist</th>
+                  <th style="padding:.45rem .75rem;background:#F8FAFC;border-bottom:2px solid #E2E8F0;white-space:nowrap">DSAT Date</th>
+                  <th style="padding:.45rem .75rem;background:#FFF5F5;border-bottom:2px solid #E2E8F0;white-space:nowrap">Current Supervisor</th>
+                  <th style="padding:.45rem .75rem;background:#F0FDF4;border-bottom:2px solid #E2E8F0;white-space:nowrap">Correct Supervisor</th>
+                  <th style="padding:.45rem .75rem;background:#FFF5F5;border-bottom:2px solid #E2E8F0;white-space:nowrap">Current Manager</th>
+                  <th style="padding:.45rem .75rem;background:#F0FDF4;border-bottom:2px solid #E2E8F0;white-space:nowrap">Correct Manager</th>
+                </tr>
+              </thead>
+              <tbody id="reattr-tbody"></tbody>
+            </table>
+          </div>
+          <button class="btn btn-success" id="reattr-apply-btn" onclick="applyReattribute()" disabled style="min-width:180px">
+            ✅ Apply Changes
+          </button>
+        </div>
       </div>
     </div>
 
@@ -3072,6 +3125,106 @@ function renderQueue(data) {
     <div class="stat-card green"><div class="stat-label">Feedback Delivered</div><div class="stat-value">${delivered}</div><div class="stat-sub">Completed</div></div>
     <div class="stat-card sky"><div class="stat-label">Total (Agent-Related)</div><div class="stat-value">${queue.length}</div><div class="stat-sub">In your queue</div></div>`;
 
+  // ── Supervisor summary table (admin only) ────────────────────────────────
+  const supSummaryEl = document.getElementById('queue-sup-summary');
+  if (supSummaryEl) {
+    if (!isAdmin()) {
+      supSummaryEl.innerHTML = '';
+    } else {
+      // Use the FULL unfiltered agent-related set for the summary (ignore status/sup filter)
+      const allAgentRel = data.filter(r => r.mainReason === 'Agent - Related' && r.feedbackStatus !== '');
+      const supMap = {};
+      for (const r of allAgentRel) {
+        const sup = r.supervisorName || '(Unassigned)';
+        if (!supMap[sup]) supMap[sup] = { name: sup, pending: 0, overdue: 0, disputed: 0, delivered: 0, total: 0 };
+        supMap[sup].total++;
+        if (r.feedbackStatus === 'Pending') {
+          supMap[sup].pending++;
+          if (slaDaysLeft(r.submittedAt) < 0) supMap[sup].overdue++;
+        } else if (r.feedbackStatus === 'Disputed') {
+          supMap[sup].disputed++;
+        } else if (r.feedbackStatus === 'Feedback Delivered') {
+          supMap[sup].delivered++;
+        }
+      }
+
+      const rows = Object.values(supMap).sort((a, b) => {
+        // Sort by: overdue desc → disputed desc → pending desc → name asc
+        if (b.overdue  !== a.overdue)  return b.overdue  - a.overdue;
+        if (b.disputed !== a.disputed) return b.disputed - a.disputed;
+        if (b.pending  !== a.pending)  return b.pending  - a.pending;
+        return a.name.localeCompare(b.name);
+      });
+
+      if (!rows.length) {
+        supSummaryEl.innerHTML = '';
+      } else {
+        const activeSup = document.getElementById('queue-filter-supervisor')?.value || '';
+        supSummaryEl.innerHTML = `
+          <div class="card" style="margin-bottom:1.25rem;padding:0;overflow:hidden">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:.85rem 1.25rem;border-bottom:1.5px solid #F1F5F9">
+              <div class="card-title" style="margin:0">👥 Supervisor Feedback Status</div>
+              ${activeSup ? `<button class="btn btn-secondary btn-sm" onclick="clearQueueFilters()" style="font-size:.75rem">✕ Clear filter</button>` : ''}
+            </div>
+            <div style="overflow-x:auto">
+              <table style="width:100%;border-collapse:collapse;font-size:.85rem">
+                <thead>
+                  <tr style="background:#F8FAFC">
+                    <th style="padding:.6rem 1rem;text-align:left;font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E2E8F0">Supervisor</th>
+                    <th style="padding:.6rem 1rem;text-align:center;font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E2E8F0">Pending</th>
+                    <th style="padding:.6rem 1rem;text-align:center;font-size:.72rem;font-weight:700;color:#EF4444;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E2E8F0">Overdue</th>
+                    <th style="padding:.6rem 1rem;text-align:center;font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E2E8F0">Disputed</th>
+                    <th style="padding:.6rem 1rem;text-align:center;font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E2E8F0">Delivered</th>
+                    <th style="padding:.6rem 1rem;text-align:center;font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E2E8F0">Total</th>
+                    <th style="padding:.6rem 1rem;text-align:left;font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E2E8F0;min-width:130px">Compliance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rows.map(s => {
+                    const rate    = s.total ? Math.round(s.delivered / s.total * 100) : 0;
+                    const barColor = rate >= 80 ? '#10B981' : rate >= 50 ? '#F59E0B' : '#EF4444';
+                    const isActive = s.name === activeSup;
+                    const rowBg   = isActive ? 'background:#EEF2FF' : (s.overdue ? 'background:#FFF5F5' : s.disputed ? 'background:#FFFBEB' : '');
+                    return `<tr style="border-bottom:1px solid #F1F5F9;cursor:pointer;transition:background .1s;${rowBg}"
+                        onclick="filterQueueBySupervisor('${escHtml(s.name)}')"
+                        onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background='${isActive?'#EEF2FF':s.overdue?'#FFF5F5':s.disputed?'#FFFBEB':''}'">
+                      <td style="padding:.65rem 1rem;font-weight:600;color:#1E293B">
+                        ${isActive ? '<span style="color:#4F46E5">▶ </span>' : ''}${escHtml(s.name)}
+                      </td>
+                      <td style="padding:.65rem 1rem;text-align:center">
+                        ${s.pending > 0 ? `<span style="background:#FEF3C7;color:#92400E;padding:.2rem .55rem;border-radius:99px;font-weight:700;font-size:.82rem">${s.pending}</span>` : '<span style="color:#94A3B8">—</span>'}
+                      </td>
+                      <td style="padding:.65rem 1rem;text-align:center">
+                        ${s.overdue > 0 ? `<span style="background:#FEE2E2;color:#991B1B;padding:.2rem .55rem;border-radius:99px;font-weight:700;font-size:.82rem">⚠ ${s.overdue}</span>` : '<span style="color:#94A3B8">—</span>'}
+                      </td>
+                      <td style="padding:.65rem 1rem;text-align:center">
+                        ${s.disputed > 0 ? `<span style="background:#FEF3C7;color:#B45309;padding:.2rem .55rem;border-radius:99px;font-weight:700;font-size:.82rem">${s.disputed}</span>` : '<span style="color:#94A3B8">—</span>'}
+                      </td>
+                      <td style="padding:.65rem 1rem;text-align:center">
+                        ${s.delivered > 0 ? `<span style="background:#D1FAE5;color:#065F46;padding:.2rem .55rem;border-radius:99px;font-weight:700;font-size:.82rem">${s.delivered}</span>` : '<span style="color:#94A3B8">—</span>'}
+                      </td>
+                      <td style="padding:.65rem 1rem;text-align:center;font-weight:700;color:#1E293B">${s.total}</td>
+                      <td style="padding:.65rem 1rem">
+                        <div style="display:flex;align-items:center;gap:.5rem">
+                          <div style="flex:1;background:#F1F5F9;border-radius:99px;height:6px;overflow:hidden">
+                            <div style="width:${rate}%;background:${barColor};height:100%;border-radius:99px;transition:width .3s"></div>
+                          </div>
+                          <span style="font-size:.78rem;font-weight:700;color:${barColor};white-space:nowrap;min-width:34px">${rate}%</span>
+                        </div>
+                      </td>
+                    </tr>`;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+            <div style="padding:.6rem 1rem;font-size:.75rem;color:#94A3B8;border-top:1px solid #F1F5F9">
+              Click any row to filter the queue below · Compliance = Delivered ÷ Total · Sorted by urgency
+            </div>
+          </div>`;
+      }
+    }
+  }
+
   const list = document.getElementById('queue-list');
   if (!queue.length) {
     list.innerHTML='<div class="empty-state"><div class="icon">🎉</div><p>No Agent-Related DSATs in queue.</p></div>';
@@ -3132,6 +3285,16 @@ function clearQueueFilters() {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   renderQueue(cachedData);
+}
+
+function filterQueueBySupervisor(name) {
+  const el = document.getElementById('queue-filter-supervisor');
+  if (!el) return;
+  // Toggle: clicking the already-active supervisor clears the filter
+  el.value = el.value === name ? '' : name;
+  renderQueue(cachedData);
+  // Scroll to the queue cards
+  document.getElementById('queue-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ── Feedback Modal ────────────────────────────────────────────────────────────
@@ -3584,6 +3747,119 @@ async function importHierarchyCSV(mode) {
     statusDiv.textContent = '';
     upsertBtn.disabled  = false;
     replaceBtn.disabled = false;
+  }
+}
+
+// ── SUPERVISOR RE-ATTRIBUTION ────────────────────────────────────────────────
+
+let _reattribChanges = [];
+
+async function previewReattribute() {
+  const fromDate = document.getElementById('reattr-from-date')?.value;
+  if (!fromDate) { showToast('Please select a from date.','#EF4444'); return; }
+
+  const wrapDiv  = document.getElementById('reattr-preview-wrap');
+  const statusBox= document.getElementById('reattr-status-box');
+  const statusMsg= document.getElementById('reattr-status-msg');
+  const tableOuter = document.getElementById('reattr-table-outer');
+  const applyBtn = document.getElementById('reattr-apply-btn');
+  const previewBtn = document.getElementById('reattr-preview-btn');
+
+  wrapDiv.style.display    = 'block';
+  tableOuter.style.display = 'none';
+  applyBtn.disabled        = true;
+  applyBtn.textContent     = '✅ Apply Changes';
+  statusBox.style.background   = '#EFF6FF';
+  statusBox.style.borderColor  = '#93C5FD';
+  statusBox.style.color        = '#1E40AF';
+  statusMsg.textContent        = '⏳ Scanning records…';
+  previewBtn.disabled          = true;
+  _reattribChanges             = [];
+
+  try {
+    const res = await apiPost({ action: 'previewReattribute', fromDate });
+    if (res.error) throw new Error(res.error);
+
+    _reattribChanges = res.changes || [];
+
+    if (!_reattribChanges.length) {
+      statusBox.style.background  = '#F0FDF4';
+      statusBox.style.borderColor = '#6EE7B7';
+      statusBox.style.color       = '#065F46';
+      statusMsg.textContent = `✅ All good — no supervisor mismatches found from ${fromDate} onwards.`;
+      previewBtn.disabled = false;
+      return;
+    }
+
+    // Build preview table
+    statusBox.style.background  = '#FFFBEB';
+    statusBox.style.borderColor = '#FCD34D';
+    statusBox.style.color       = '#92400E';
+    statusMsg.textContent = `Found ${_reattribChanges.length} record${_reattribChanges.length!==1?'s':''} with incorrect supervisor. Review below, then click Apply.`;
+
+    const tbody = document.getElementById('reattr-tbody');
+    tbody.innerHTML = _reattribChanges.map(c => `
+      <tr>
+        <td style="padding:.4rem .75rem;border-bottom:1px solid #F1F5F9"><strong>#${escHtml(c.ticketId)}</strong></td>
+        <td style="padding:.4rem .75rem;border-bottom:1px solid #F1F5F9">${escHtml(c.specialistName)}</td>
+        <td style="padding:.4rem .75rem;border-bottom:1px solid #F1F5F9;white-space:nowrap">${escHtml(c.dsatDate)}</td>
+        <td style="padding:.4rem .75rem;border-bottom:1px solid #F1F5F9;background:#FFF5F5;color:#EF4444">${escHtml(c.oldSup||'—')}</td>
+        <td style="padding:.4rem .75rem;border-bottom:1px solid #F1F5F9;background:#F0FDF4;color:#059669;font-weight:600">${escHtml(c.newSup||'—')}</td>
+        <td style="padding:.4rem .75rem;border-bottom:1px solid #F1F5F9;background:#FFF5F5;color:#EF4444">${escHtml(c.oldMgr||'—')}</td>
+        <td style="padding:.4rem .75rem;border-bottom:1px solid #F1F5F9;background:#F0FDF4;color:#059669;font-weight:600">${escHtml(c.newMgr||'—')}</td>
+      </tr>`).join('');
+
+    tableOuter.style.display  = 'block';
+    applyBtn.disabled         = false;
+    applyBtn.textContent      = `✅ Apply ${_reattribChanges.length} Change${_reattribChanges.length!==1?'s':''}`;
+
+  } catch(err) {
+    statusBox.style.background  = '#FEE2E2';
+    statusBox.style.borderColor = '#FCA5A5';
+    statusBox.style.color       = '#991B1B';
+    statusMsg.textContent = '❌ ' + err.message;
+  } finally {
+    previewBtn.disabled = false;
+  }
+}
+
+async function applyReattribute() {
+  if (!_reattribChanges.length) return;
+  const fromDate = document.getElementById('reattr-from-date')?.value;
+  const n = _reattribChanges.length;
+  if (!confirm(`Apply ${n} supervisor re-assignment${n!==1?'s':''}?\n\nThis will update the Supervisor and Manager fields on ${n} DSAT record${n!==1?'s':''}. Audit content is not touched.`)) return;
+
+  const applyBtn  = document.getElementById('reattr-apply-btn');
+  const statusMsg = document.getElementById('reattr-status-msg');
+  const statusBox = document.getElementById('reattr-status-box');
+  applyBtn.disabled    = true;
+  applyBtn.textContent = '⏳ Applying…';
+
+  try {
+    const res = await apiPost({ action: 'applyReattribute', fromDate });
+    if (res.error) throw new Error(res.error);
+
+    statusBox.style.background  = '#F0FDF4';
+    statusBox.style.borderColor = '#6EE7B7';
+    statusBox.style.color       = '#065F46';
+    statusMsg.textContent = `✅ Done — ${res.updated} record${res.updated!==1?'s':''} updated with correct supervisor.`;
+    document.getElementById('reattr-table-outer').style.display = 'none';
+    applyBtn.textContent = '✅ Applied';
+    showToast(`✅ ${res.updated} records re-attributed.`);
+    _reattribChanges = [];
+
+    // Refresh cached data so records table and dashboards reflect the fix
+    await apiFetch();
+    if (currentPage === 'records')    renderRecords(cachedData);
+    else if (currentPage === 'queue') renderQueue(cachedData);
+
+  } catch(err) {
+    statusBox.style.background  = '#FEE2E2';
+    statusBox.style.borderColor = '#FCA5A5';
+    statusBox.style.color       = '#991B1B';
+    statusMsg.textContent = '❌ ' + err.message;
+    applyBtn.disabled    = false;
+    applyBtn.textContent = `✅ Apply ${n} Change${n!==1?'s':''}`;
   }
 }
 
