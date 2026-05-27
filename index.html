@@ -292,6 +292,9 @@ tr:hover td{background:#FAFAFA}
     <button class="nav-btn" data-page="supervisors" onclick="navTo('supervisors')" id="nav-supervisors" style="display:none">
       <span>👥</span><span class="nav-label">Supervisors</span>
     </button>
+    <button class="nav-btn" data-page="disputes" onclick="navTo('disputes')" id="nav-disputes" style="display:none">
+      <span>🚩</span><span class="nav-label">Disputes</span>
+    </button>
     <button class="nav-btn" data-page="corrections" onclick="navTo('corrections')" id="nav-corrections" style="display:none">
       <span>✏️</span><span class="nav-label">Corrections</span>
     </button>
@@ -1123,6 +1126,85 @@ tr:hover td{background:#FAFAFA}
   </div>
 
   <!-- ── CORRECTIONS ──────────────────────────────────────────────────────────── -->
+  <!-- ── DISPUTES ──────────────────────────────────────────────────────────────── -->
+  <div class="page" id="page-disputes">
+    <div class="page-header">
+      <div>
+        <div class="page-title">🚩 Disputes</div>
+        <div class="page-sub">Disputed DSAT feedback — analytics and admin review status</div>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="card" style="padding:1rem 1.5rem;margin-bottom:1.25rem">
+      <div style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end">
+        <div class="form-group" style="min-width:150px;margin:0">
+          <label style="font-size:.75rem">From Date</label>
+          <input type="date" id="disp-filter-from" onchange="renderDisputes()">
+        </div>
+        <div class="form-group" style="min-width:150px;margin:0">
+          <label style="font-size:.75rem">To Date</label>
+          <input type="date" id="disp-filter-to" onchange="renderDisputes()">
+        </div>
+        <div class="form-group" style="min-width:200px;margin:0">
+          <label style="font-size:.75rem">Supervisor</label>
+          <select id="disp-filter-supervisor" onchange="renderDisputes()">
+            <option value="">All Supervisors</option>
+          </select>
+        </div>
+        <div class="form-group" style="min-width:160px;margin:0">
+          <label style="font-size:.75rem">Review Status</label>
+          <select id="disp-filter-review" onchange="renderDisputes()">
+            <option value="">All</option>
+            <option value="pending">Pending Review</option>
+            <option value="reviewed">Reviewed</option>
+          </select>
+        </div>
+        <button class="btn btn-warning btn-sm" onclick="clearDisputeFilters()">↺ Reset</button>
+      </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-grid" id="disp-stats"></div>
+
+    <!-- Charts -->
+    <div class="charts-grid" style="margin-bottom:1.25rem">
+      <div class="chart-card">
+        <div class="chart-title">Disputes by Month</div>
+        <div class="chart-wrap"><canvas id="chart-disp-trend"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Top Sub-Reasons</div>
+        <div class="chart-wrap"><canvas id="chart-disp-reason"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Disputes by Supervisor</div>
+        <div class="chart-wrap"><canvas id="chart-disp-sup"></canvas></div>
+      </div>
+    </div>
+
+    <!-- Full disputes table -->
+    <div class="card">
+      <div class="card-title">🚩 All Disputed Records <span id="disp-count-label" style="font-size:.8rem;font-weight:400;color:#64748B"></span></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Ticket</th>
+            <th>DSAT Date</th>
+            <th>Specialist</th>
+            <th>Supervisor</th>
+            <th>Sub-Reason</th>
+            <th>Dispute Notes</th>
+            <th>Reviewed By</th>
+            <th>Reviewed At</th>
+            <th>Status</th>
+          </tr></thead>
+          <tbody id="disp-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <div class="page" id="page-corrections">
     <div class="page-header">
       <div>
@@ -1181,6 +1263,7 @@ tr:hover td{background:#FAFAFA}
             <tbody id="corr-tbody"></tbody>
           </table>
         </div>
+        <p style="font-size:.75rem;color:#94A3B8;margin-top:.5rem;padding:.5rem 0 0">Expanded rows show: Correction Type · Correction Notes (hover for full text) · Edited At · View</p>
       </div>
     </div>
   </div>
@@ -1502,6 +1585,7 @@ function normalizeRow(r) {
     feedbackStatus: String(r.feedbackStatus||''), supervisorFeedback: String(r.supervisorFeedback||''),
     feedbackProvidedAt: String(r.feedbackProvidedAt||''), disputeNotes: String(r.disputeNotes||''),
     disputeReviewedBy: String(r.disputeReviewedBy||''), disputeReviewedAt: String(r.disputeReviewedAt||''),
+    correctionType: String(r.correctionType||''), correctionNotes: String(r.correctionNotes||''),
     // Enrichment fields (from weekly CSV upload, joined by ticketId)
     channel:         String(r.channel||''),
     customerEmail:   String(r.customerEmail||''),
@@ -1536,7 +1620,7 @@ function calcMonth(dateStr) {
 }
 
 // ══ NAVIGATION ════════════════════════════════════════════════════════════════
-const PAGES = ['dashboard','submit','records','queue','analytics','supervisors','corrections','guide','admin'];
+const PAGES = ['dashboard','submit','records','queue','analytics','supervisors','disputes','corrections','guide','admin'];
 
 function navTo(page) {
   currentPage = page;
@@ -1565,6 +1649,7 @@ function navTo(page) {
   else if (page==='queue')       renderQueue(cachedData);
   else if (page==='analytics')   { buildAnalyticsFilters(); renderAnalytics(); }
   else if (page==='supervisors') { buildSupervisorFilter(); renderSupervisors(); }
+  else if (page==='disputes')    renderDisputes();
   else if (page==='corrections') renderCorrections();
   else if (page==='guide')       renderGuide();
   else if (page==='admin')       { switchAdminTab('roles'); loadRoles(); renderHierarchyTable(); }
@@ -1581,6 +1666,7 @@ function updateRoleUI() {
 
   document.getElementById('nav-submit').style.display      = canSubmit() ? '' : 'none';
   document.getElementById('nav-queue').style.display       = isSupervisor() ? '' : 'none';
+  document.getElementById('nav-disputes').style.display     = isAdmin() ? '' : 'none';
   document.getElementById('nav-corrections').style.display  = isAdmin() || cachedRole==='analyst' ? '' : 'none';
   document.getElementById('nav-supervisors').style.display  = isAdmin() || isSupervisor() || cachedRole==='analyst' ? '' : 'none';
   document.getElementById('nav-admin').style.display        = isAdmin() ? '' : 'none';
@@ -3035,6 +3121,21 @@ function openEditModal(id) {
       <div class="form-group full"><label>Supporting Details</label><textarea id="edit-supporting">${escHtml(r.supportingDetails)}</textarea></div>
       <div class="form-group full"><label>Resolution Provided</label><textarea id="edit-resolution">${escHtml(r.resolutionProvided)}</textarea></div>
       <div class="form-group full"><label>Improvement Opportunities</label><textarea id="edit-improvement">${escHtml(r.improvementOpportunities)}</textarea></div>
+    </div>
+    <div style="margin-top:1.25rem;border-top:2px dashed #E2E8F0;padding-top:1.25rem">
+      <div style="font-size:.8rem;font-weight:700;color:#4F46E5;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.75rem">
+        ✏️ Correction Feedback (admin only — not visible to specialists)
+      </div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Correction Type <small style="font-weight:400;color:#94A3B8">(open classification)</small></label>
+          <input id="edit-correction-type" placeholder="e.g. Wrong category, Missing info, Agent misidentified…" value="${escHtml(r.correctionType||'')}">
+        </div>
+        <div class="form-group full">
+          <label>Correction Notes <small style="font-weight:400;color:#94A3B8">(what was corrected and why)</small></label>
+          <textarea id="edit-correction-notes" rows="3" placeholder="Describe what was changed and the reason for the correction…">${escHtml(r.correctionNotes||'')}</textarea>
+        </div>
+      </div>
     </div>`;
   document.getElementById('detail-modal-footer').innerHTML = `
     <button class="btn btn-secondary" onclick="closeModal('detail-modal')">Cancel</button>
@@ -3070,7 +3171,9 @@ async function saveEditRecord() {
     correctProcessFollowed:   document.getElementById('edit-process').value,
     supportingDetails:        document.getElementById('edit-supporting').value,
     resolutionProvided:       document.getElementById('edit-resolution').value,
-    improvementOpportunities: document.getElementById('edit-improvement').value
+    improvementOpportunities: document.getElementById('edit-improvement').value,
+    correctionType:           document.getElementById('edit-correction-type')?.value  || '',
+    correctionNotes:          document.getElementById('edit-correction-notes')?.value || ''
   };
   try {
     await apiPost({action:'updateDSAT', record});
@@ -4398,9 +4501,13 @@ function renderCorrections() {
       row.corrected.sort((a,b)=>(b.lastEditedAt||'').localeCompare(a.lastEditedAt||'')).forEach(r => {
         html += `<tr class="an-sub-row">
           <td style="padding-left:2.5rem">↳ <strong>#${escHtml(r.ticketId)}</strong> · ${fmtDate(r.dsatDate)}</td>
-          <td colspan="2">${reasonBadge(r.mainReason)}</td>
-          <td>By: <em>${escHtml(r.lastEditedByName||r.lastEditedByEmail||'—')}</em></td>
-          <td>${fmtDateTime(r.lastEditedAt)}&nbsp;<button class="btn btn-secondary btn-sm" style="padding:.2rem .5rem;font-size:.72rem" onclick="openDetail('${r.id}')">View</button></td>
+          <td>${reasonBadge(r.mainReason)}</td>
+          <td><em style="font-size:.8rem">${escHtml(r.lastEditedByName||r.lastEditedByEmail||'—')}</em></td>
+          <td style="max-width:280px">
+            ${r.correctionType ? `<span style="background:#EFF6FF;color:#1D4ED8;padding:.15rem .5rem;border-radius:.3rem;font-size:.72rem;font-weight:600;display:inline-block;margin-bottom:.2rem">${escHtml(r.correctionType)}</span><br>` : ''}
+            <span style="font-size:.75rem;color:#475569" title="${escHtml(r.correctionNotes||'')}">${r.correctionNotes ? escHtml(r.correctionNotes.length>70 ? r.correctionNotes.slice(0,70)+'…' : r.correctionNotes) : '<span style="color:#94A3B8">No notes</span>'}</span>
+          </td>
+          <td style="white-space:nowrap">${fmtDateTime(r.lastEditedAt)}&nbsp;<button class="btn btn-secondary btn-sm" style="padding:.2rem .5rem;font-size:.72rem" onclick="openDetail('${r.id}')">View</button></td>
         </tr>`;
       });
     }
@@ -4428,6 +4535,118 @@ function clearCorrFilters() {
   });
   expandedSubmitters.clear();
   renderCorrections();
+}
+
+// ══ DISPUTES ══════════════════════════════════════════════════════════════════
+
+function renderDisputes() {
+  const from   = document.getElementById('disp-filter-from')?.value   || '';
+  const to     = document.getElementById('disp-filter-to')?.value     || '';
+  const sup    = document.getElementById('disp-filter-supervisor')?.value || '';
+  const review = document.getElementById('disp-filter-review')?.value || '';
+
+  const allDisputes = cachedData.filter(r => r.feedbackStatus === 'Disputed');
+
+  // Populate supervisor dropdown
+  const supEl = document.getElementById('disp-filter-supervisor');
+  if (supEl) {
+    const prev = supEl.value;
+    const sups = [...new Set(allDisputes.map(r=>r.supervisorName).filter(Boolean))].sort();
+    supEl.innerHTML = '<option value="">All Supervisors</option>' +
+      sups.map(s=>`<option${s===prev?' selected':''}>${escHtml(s)}</option>`).join('');
+  }
+
+  // Apply filters
+  let disputes = [...allDisputes];
+  if (from)              disputes = disputes.filter(r => (r.dsatDate||r.submittedAt||'') >= from);
+  if (to)                disputes = disputes.filter(r => (r.dsatDate||r.submittedAt||'') <= to);
+  if (sup)               disputes = disputes.filter(r => r.supervisorName === sup);
+  if (review==='pending')  disputes = disputes.filter(r => !r.disputeReviewedAt);
+  if (review==='reviewed') disputes = disputes.filter(r =>  r.disputeReviewedAt);
+
+  const total    = disputes.length;
+  const pending  = disputes.filter(r => !r.disputeReviewedAt).length;
+  const reviewed = disputes.filter(r =>  r.disputeReviewedAt).length;
+  const totalAR  = cachedData.filter(r => r.mainReason === 'Agent - Related').length;
+  const dispRate = totalAR ? Math.round(allDisputes.length / totalAR * 100) : 0;
+  const revRate  = total ? Math.round(reviewed / total * 100) : 0;
+
+  // Stats
+  document.getElementById('disp-stats').innerHTML = `
+    <div class="stat-card red"><div class="stat-label">Total Disputes</div><div class="stat-value">${total}</div><div class="stat-sub">${dispRate}% of Agent-Related</div></div>
+    <div class="stat-card amber"><div class="stat-label">Pending Review</div><div class="stat-value">${pending}</div><div class="stat-sub">Awaiting admin decision</div></div>
+    <div class="stat-card green"><div class="stat-label">Reviewed</div><div class="stat-value">${reviewed}</div><div class="stat-sub">Admin resolved</div></div>
+    <div class="stat-card sky"><div class="stat-label">Review Rate</div><div class="stat-value">${revRate}%</div><div class="stat-sub">of disputes resolved</div></div>`;
+
+  // Chart 1 — Monthly trend
+  const byMonth = {};
+  disputes.forEach(r => { const m=(r.dsatDate||r.submittedAt||'').slice(0,7); if(m) byMonth[m]=(byMonth[m]||0)+1; });
+  const mKeys = Object.keys(byMonth).sort();
+  renderChart('chart-disp-trend','bar', mKeys, mKeys.map(k=>byMonth[k]), mKeys.map(()=>'#EF4444'));
+  if (chartInstances['chart-disp-trend']) {
+    chartInstances['chart-disp-trend'].options.plugins.legend = { display:false };
+    chartInstances['chart-disp-trend'].update();
+  }
+
+  // Chart 2 — Top sub-reasons
+  const byReason = {};
+  disputes.forEach(r => { const k=r.subReason||'Unknown'; byReason[k]=(byReason[k]||0)+1; });
+  const rEntries = Object.entries(byReason).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  renderChart('chart-disp-reason','bar',
+    rEntries.map(([k])=>k.length>22?k.slice(0,22)+'…':k),
+    rEntries.map(([,v])=>v), rEntries.map(()=>'#F59E0B'));
+  if (chartInstances['chart-disp-reason']) {
+    chartInstances['chart-disp-reason'].options.plugins.legend = { display:false };
+    chartInstances['chart-disp-reason'].update();
+  }
+
+  // Chart 3 — By supervisor
+  const bySup = {};
+  disputes.forEach(r => { const k=r.supervisorName||'Unassigned'; bySup[k]=(bySup[k]||0)+1; });
+  const sEntries = Object.entries(bySup).sort((a,b)=>b[1]-a[1]);
+  renderChart('chart-disp-sup','bar',
+    sEntries.map(([k])=>k), sEntries.map(([,v])=>v), sEntries.map(()=>'#7C3AED'));
+  if (chartInstances['chart-disp-sup']) {
+    chartInstances['chart-disp-sup'].options.plugins.legend = { display:false };
+    chartInstances['chart-disp-sup'].update();
+  }
+
+  // Table
+  document.getElementById('disp-count-label').textContent = `— ${total} record${total!==1?'s':''}`;
+  const tbody = document.getElementById('disp-tbody');
+  if (!disputes.length) {
+    tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><div class="icon">🎉</div><p>No disputes found.</p></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = disputes
+    .sort((a,b) => (a.disputeReviewedAt?1:0)-(b.disputeReviewedAt?1:0) || (b.dsatDate||'').localeCompare(a.dsatDate||''))
+    .map(r => {
+      const isReviewed = !!r.disputeReviewedAt;
+      return `<tr>
+        <td style="white-space:nowrap">
+          <strong>#${escHtml(r.ticketId)}</strong>
+          <button class="btn btn-secondary btn-sm" onclick="openDetail('${r.id}')">View</button>
+          ${isAdmin() ? `<button class="btn btn-warning btn-sm" onclick="navTo('queue');setTimeout(()=>document.getElementById('queue-filter-status')?.value='Disputed'||renderQueue(cachedData),50)">Queue</button>` : ''}
+        </td>
+        <td>${fmtDate(r.dsatDate)}</td>
+        <td>${escHtml(r.specialistName)}</td>
+        <td><small>${escHtml(r.supervisorName||'—')}</small></td>
+        <td><small>${escHtml(r.subReason||'—')}</small></td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.8rem" title="${escHtml(r.disputeNotes||'')}">${escHtml(r.disputeNotes||'—')}</td>
+        <td><small>${escHtml(r.disputeReviewedBy||'—')}</small></td>
+        <td><small>${r.disputeReviewedAt ? fmtDate(r.disputeReviewedAt) : '—'}</small></td>
+        <td>${isReviewed
+          ? '<span class="badge badge-yes">✓ Reviewed</span>'
+          : `<span class="badge" style="background:#FEF3C7;color:#92400E">⏳ Pending</span>${isAdmin()?` <button class="btn btn-warning btn-sm" style="font-size:.72rem;padding:.2rem .5rem" onclick="openDisputeReview('${r.id}')">Review</button>`:''}`}</td>
+      </tr>`;
+    }).join('');
+}
+
+function clearDisputeFilters() {
+  ['disp-filter-from','disp-filter-to','disp-filter-supervisor','disp-filter-review'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  renderDisputes();
 }
 
 // ══ BOOT ══════════════════════════════════════════════════════════════════════
