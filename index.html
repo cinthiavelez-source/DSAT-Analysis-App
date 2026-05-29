@@ -403,6 +403,20 @@ tr:hover td{background:#FAFBFF}
       <span class="nav-icon">✏️</span><span class="nav-label">Corrections</span>
     </button>
 
+    <!-- View-As switcher — admin only -->
+    <div id="nav-view-as-section" style="display:none">
+      <div class="nav-section-label">View As</div>
+      <button class="nav-btn" id="nav-preview-supervisor" onclick="setPreviewRole('supervisor');closeSidebar()">
+        <span class="nav-icon">👥</span><span class="nav-label">Supervisor</span>
+      </button>
+      <button class="nav-btn" id="nav-preview-analyst" onclick="setPreviewRole('analyst');closeSidebar()">
+        <span class="nav-icon">🔍</span><span class="nav-label">Specialist</span>
+      </button>
+      <button class="nav-btn" id="nav-preview-reset" onclick="setPreviewRole(null);closeSidebar()" style="display:none">
+        <span class="nav-icon">↩</span><span class="nav-label">Back to Admin</span>
+      </button>
+    </div>
+
     <div class="nav-section-label">Settings</div>
     <button class="nav-btn" data-page="guide" onclick="navTo('guide');closeSidebar()" id="nav-guide">
       <span class="nav-icon">📖</span><span class="nav-label">Guide</span>
@@ -437,7 +451,7 @@ tr:hover td{background:#FAFBFF}
         <div class="page-title">Dashboard</div>
         <div class="page-sub">CookUnity DSAT Overview</div>
       </div>
-      <button class="btn btn-secondary btn-sm" onclick="apiFetch().then(d=>{cachedData=d;renderDashboard(d)})">↺ Refresh</button>
+      <button class="btn btn-secondary btn-sm" onclick="apiFetch().then(d=>{cachedData=d;applyDashFilters()})">↺ Refresh</button>
     </div>
     <!-- Dashboard filters -->
     <div class="card" style="padding:1rem 1.5rem;margin-bottom:1.25rem">
@@ -514,11 +528,7 @@ tr:hover td{background:#FAFBFF}
     </div>
     <!-- Sub-reason breakdown (rendered by renderDashboard) -->
     <div id="dash-subreason-section"></div>
-
-    <div class="card">
-      <div class="card-title">📅 Recent DSATs</div>
-      <div class="table-wrap" id="dash-recent"></div>
-    </div>
+    <div id="dash-enrichment-section"></div>
   </div>
 
   <!-- ── SUBMIT DSAT ─────────────────────────────────────────────────────────── -->
@@ -663,9 +673,19 @@ tr:hover td{background:#FAFBFF}
         <div class="page-title">All DSAT Records</div>
         <div class="page-sub" id="records-count-label">Loading…</div>
       </div>
-      <button class="btn btn-secondary btn-sm" onclick="exportCSV()">⬇ Export CSV</button>
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <div style="display:flex;border:1.5px solid #E2E8F0;border-radius:.5rem;overflow:hidden">
+          <button id="rec-view-table" class="an-mode-btn active" onclick="setRecordsView('table')" style="border:none">☰ Table</button>
+          <button id="rec-view-grouped" class="an-mode-btn" onclick="setRecordsView('grouped')" style="border:none">👥 By Supervisor</button>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="exportCSV()">⬇ Export CSV</button>
+      </div>
     </div>
-    <div class="card">
+    <!-- Grouped by supervisor view (current month) -->
+    <div id="records-grouped-view" style="display:none">
+      <div id="records-grouped-content"></div>
+    </div>
+    <div class="card" id="records-filter-card">
       <div class="filters-row">
         <div class="form-group"><label>Ticket ID</label><input type="text" id="filter-ticket" placeholder="e.g. 1234567" oninput="applyFilters()"></div>
         <div class="form-group"><label>Date Range (from)</label><input type="date" id="filter-from"></div>
@@ -714,7 +734,7 @@ tr:hover td{background:#FAFBFF}
         <tbody id="records-tbody"></tbody>
       </table></div>
     </div>
-  </div>
+  </div><!-- /page-records -->
 
   <!-- ── FEEDBACK QUEUE ──────────────────────────────────────────────────────── -->
   <div class="page" id="page-queue">
@@ -1569,6 +1589,7 @@ let cachedRole         = 'viewer';
 let cachedRoles     = [];
 let currentPage     = 'dashboard';
 let chartInstances  = {};
+let previewRole     = null;   // null = real admin; 'supervisor'/'analyst' = preview mode
 // Register datalabels plugin globally (loaded via CDN above)
 if (typeof ChartDataLabels !== 'undefined') Chart.register(ChartDataLabels);
 
@@ -1576,9 +1597,58 @@ if (typeof ChartDataLabels !== 'undefined') Chart.register(ChartDataLabels);
 function getUser()         { try { return JSON.parse(localStorage.getItem(USER_KEY)); } catch(e){ return null; } }
 function setUser(u)        { localStorage.setItem(USER_KEY, JSON.stringify(u)); }
 function scriptUrl()       { return DEFAULT_SCRIPT_URL; }
-function isAdmin()         { return cachedRole==='admin' || (getUser()&&getUser().email.toLowerCase()===DEFAULT_ADMIN_EMAIL.toLowerCase()); }
-function isSupervisor()    { return cachedRole==='supervisor' || isAdmin(); }
-function canSubmit()       { return cachedRole!=='viewer'; }
+// When in preview mode, role functions use previewRole instead of real role
+function _effectiveRole()  { return previewRole || cachedRole; }
+function isAdmin()         { return !previewRole && (cachedRole==='admin' || (getUser()&&getUser().email.toLowerCase()===DEFAULT_ADMIN_EMAIL.toLowerCase())); }
+function isSupervisor()    { return _effectiveRole()==='supervisor' || isAdmin(); }
+function canSubmit()       { return _effectiveRole()!=='viewer'; }
+
+// ── ROLE PREVIEW ─────────────────────────────────────────────────────────────
+const _realAdminRole = () => cachedRole==='admin' || (getUser()&&getUser().email.toLowerCase()===DEFAULT_ADMIN_EMAIL.toLowerCase());
+
+function setPreviewRole(role) {
+  // role: null | 'supervisor' | 'analyst'
+  // Only admins can use this
+  if (!_realAdminRole()) return;
+  previewRole = role || null;
+  updateRoleUI();
+  _renderPreviewBanner();
+  // Re-render current page with new role perspective
+  navTo(currentPage);
+}
+
+function _renderPreviewBanner() {
+  let banner = document.getElementById('preview-banner');
+  if (!previewRole) {
+    if (banner) banner.remove();
+    return;
+  }
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'preview-banner';
+    banner.style.cssText = `
+      position:fixed;top:0;left:240px;right:0;z-index:500;
+      background:linear-gradient(90deg,#F59E0B,#D97706);color:#fff;
+      padding:.55rem 1.25rem;display:flex;align-items:center;gap:1rem;
+      font-size:.83rem;font-weight:600;box-shadow:0 2px 8px rgba(245,158,11,.4);
+    `;
+    // Adjust sidebar and main to account for banner
+    document.body.appendChild(banner);
+  }
+  const labels = { supervisor: '👥 Supervisor View', analyst: '🔍 Analyst / Specialist View' };
+  banner.innerHTML = `
+    <span>👁️ Preview Mode:</span>
+    <span style="background:rgba(255,255,255,.25);padding:.2rem .7rem;border-radius:99px">
+      ${labels[previewRole] || previewRole}
+    </span>
+    <span style="opacity:.8;font-weight:400;font-size:.78rem">— You are seeing the app as this role would see it</span>
+    <button onclick="setPreviewRole(null)" style="margin-left:auto;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);color:#fff;padding:.3rem .85rem;border-radius:.4rem;cursor:pointer;font-size:.8rem;font-weight:700">
+      ✕ Exit Preview
+    </button>
+  `;
+  // On mobile the banner should span full width
+  if (window.innerWidth <= 900) banner.style.left = '0';
+}
 
 // ── Google SSO ────────────────────────────────────────────────────────────────
 function initGoogleSSO() {
@@ -1783,7 +1853,7 @@ function navTo(page) {
   );
   // Scroll to top on page change
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  if (page==='dashboard')    renderDashboard(cachedData);
+  if (page==='dashboard')    applyDashFilters();
   else if (page==='submit') {
     // Default today's date on every visit if field is blank
     const _df = document.getElementById('f-analysis-date');
@@ -1814,21 +1884,35 @@ function updateRoleUI() {
   document.getElementById('user-name-nav').textContent = u.name.split(' ')[0]; // first name only in sidebar
   const av = document.getElementById('user-avatar-nav');
   if (av) av.textContent = (u.name||'?').charAt(0).toUpperCase();
-  const rb = document.getElementById('role-badge');
-  rb.textContent = cachedRole;
-  rb.className = 'role-badge role-'+cachedRole;
-
+  const rb  = document.getElementById('role-badge');
+  const eff = _effectiveRole();
   document.getElementById('nav-submit').style.display      = canSubmit() ? '' : 'none';
-  document.getElementById('nav-queue').style.display       = isSupervisor() ? '' : 'none';
-  document.getElementById('nav-disputes').style.display     = isAdmin() ? '' : 'none';
-  document.getElementById('nav-corrections').style.display  = isAdmin() || cachedRole==='analyst' ? '' : 'none';
-  document.getElementById('nav-supervisors').style.display  = isAdmin() || isSupervisor() || cachedRole==='analyst' ? '' : 'none';
-  document.getElementById('nav-admin').style.display        = isAdmin() ? '' : 'none';
+  document.getElementById('nav-queue').style.display       = (eff==='supervisor' || isAdmin()) ? '' : 'none';
+  document.getElementById('nav-disputes').style.display    = isAdmin() ? '' : 'none';
+  document.getElementById('nav-corrections').style.display = (isAdmin() || eff==='analyst') ? '' : 'none';
+  document.getElementById('nav-supervisors').style.display = (isAdmin() || eff==='supervisor' || eff==='analyst') ? '' : 'none';
+  document.getElementById('nav-admin').style.display       = isAdmin() ? '' : 'none';
+
+  // View-As section — only real admins see it
+  const vas = document.getElementById('nav-view-as-section');
+  if (vas) vas.style.display = _realAdminRole() ? '' : 'none';
+
+  // Highlight which preview is active & show/hide reset button
+  const pSup = document.getElementById('nav-preview-supervisor');
+  const pAna = document.getElementById('nav-preview-analyst');
+  const pRst = document.getElementById('nav-preview-reset');
+  if (pSup) pSup.classList.toggle('active', previewRole==='supervisor');
+  if (pAna) pAna.classList.toggle('active', previewRole==='analyst');
+  if (pRst) pRst.style.display = previewRole ? '' : 'none';
+
+  // Role badge: show preview role when active
+  rb.textContent = previewRole ? `${previewRole} (preview)` : cachedRole;
+  rb.className   = 'role-badge role-'+(previewRole||cachedRole);
 
   // Queue badge
   const pending = cachedData.filter(r=>r.mainReason==='Agent - Related' && r.feedbackStatus==='Pending');
-  const myPending = isSupervisor() && !isAdmin()
-    ? pending.filter(r=>r.supervisorEmail.toLowerCase()===(u.email||''))
+  const myPending = (eff==='supervisor' && !isAdmin())
+    ? pending.filter(r=>r.supervisorEmail.toLowerCase()===(u.email||'').toLowerCase())
     : pending;
   const badge = document.getElementById('queue-badge');
   if (myPending.length > 0) {
@@ -2321,7 +2405,28 @@ function resetForm() {
 }
 
 // ══ DASHBOARD ═════════════════════════════════════════════════════════════════
-function renderDashboard(data) {
+
+// MoM helpers
+function _momPct(curr, prev) {
+  if (prev === null || prev === undefined) return null;
+  if (prev === 0 && curr === 0) return null;
+  if (prev === 0) return null; // can't compute % from 0
+  return Math.round((curr - prev) / prev * 100);
+}
+function _momBadge(curr, prev, lowerIsBetter = false) {
+  const d = _momPct(curr, prev);
+  if (d === null) return `<span style="font-size:.68rem;color:#94A3B8;margin-left:.35rem">— no prev</span>`;
+  if (d === 0) return `<span style="font-size:.68rem;color:#94A3B8;margin-left:.35rem">= 0% MoM</span>`;
+  const good  = lowerIsBetter ? d < 0 : d > 0;
+  const color = good ? '#10B981' : '#EF4444';
+  const arrow = d > 0 ? '↑' : '↓';
+  return `<span style="font-size:.7rem;font-weight:700;color:${color};margin-left:.35rem;white-space:nowrap">${arrow}${Math.abs(d)}% MoM</span>`;
+}
+
+function renderDashboard(data, prevData) {
+  // prevData = previous month's records (or null if no month filter active)
+  const p = n => prevData !== null && prevData !== undefined ? n : null; // helper to pass prev
+
   const total      = data.length;
   const agentRel   = data.filter(r=>r.mainReason==='Agent - Related').length;
   const preventable= data.filter(r=>r.isPreventable==='YES').length;
@@ -2330,14 +2435,52 @@ function renderDashboard(data) {
   const disputed   = data.filter(r=>r.feedbackStatus==='Disputed').length;
   const slaBreach  = data.filter(r=>r.feedbackStatus==='Pending' && slaDaysLeft(r.submittedAt)<0).length;
 
+  const pTotal      = p(prevData?.length ?? null);
+  const pAgentRel   = p(prevData ? prevData.filter(r=>r.mainReason==='Agent - Related').length : null);
+  const pPreventable= p(prevData ? prevData.filter(r=>r.isPreventable==='YES').length : null);
+  const pResolved   = p(prevData ? prevData.filter(r=>r.issueResolved==='YES').length : null);
+  const pPending    = p(prevData ? prevData.filter(r=>r.feedbackStatus==='Pending').length : null);
+  const pSlaBreach  = p(prevData ? prevData.filter(r=>r.feedbackStatus==='Pending' && slaDaysLeft(r.submittedAt)<0).length : null);
+
+  const monthLabel = (() => {
+    const m = document.getElementById('dash-filter-month')?.value;
+    if (!m) return 'All time';
+    const d = new Date(m+'-01');
+    return d.toLocaleString('en-US',{month:'long',year:'numeric'});
+  })();
+
   const stats = document.getElementById('dash-stats');
   stats.innerHTML = `
-    <div class="stat-card indigo"><div class="stat-label">Total DSATs</div><div class="stat-value">${total}</div><div class="stat-sub">All time</div></div>
-    <div class="stat-card purple"><div class="stat-label">Agent-Related</div><div class="stat-value">${agentRel}</div><div class="stat-sub">${total?Math.round(agentRel/total*100):0}% of total</div></div>
-    <div class="stat-card amber"><div class="stat-label">Preventable</div><div class="stat-value">${preventable}</div><div class="stat-sub">${total?Math.round(preventable/total*100):0}% preventable</div></div>
-    <div class="stat-card green"><div class="stat-label">Issue Resolved</div><div class="stat-value">${resolved}</div><div class="stat-sub">${total?Math.round(resolved/total*100):0}% resolved</div></div>
-    <div class="stat-card red"><div class="stat-label">Pending Feedback</div><div class="stat-value">${pending}</div><div class="stat-sub">${disputed} disputed</div></div>
-    <div class="stat-card sky"><div class="stat-label">SLA Breaches</div><div class="stat-value">${slaBreach}</div><div class="stat-sub">Over 15-day SLA</div></div>`;
+    <div class="stat-card indigo">
+      <div class="stat-label">Total DSATs</div>
+      <div class="stat-value" style="display:flex;align-items:baseline;gap:.25rem">${total}${_momBadge(total,pTotal,true)}</div>
+      <div class="stat-sub">${monthLabel}</div>
+    </div>
+    <div class="stat-card purple">
+      <div class="stat-label">Agent-Related</div>
+      <div class="stat-value" style="display:flex;align-items:baseline;gap:.25rem">${agentRel}${_momBadge(agentRel,pAgentRel,true)}</div>
+      <div class="stat-sub">${total?Math.round(agentRel/total*100):0}% of total</div>
+    </div>
+    <div class="stat-card amber">
+      <div class="stat-label">Preventable</div>
+      <div class="stat-value" style="display:flex;align-items:baseline;gap:.25rem">${preventable}${_momBadge(preventable,pPreventable,true)}</div>
+      <div class="stat-sub">${total?Math.round(preventable/total*100):0}% of total</div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-label">Issue Resolved</div>
+      <div class="stat-value" style="display:flex;align-items:baseline;gap:.25rem">${resolved}${_momBadge(resolved,pResolved,false)}</div>
+      <div class="stat-sub">${total?Math.round(resolved/total*100):0}% resolved</div>
+    </div>
+    <div class="stat-card red">
+      <div class="stat-label">Pending Feedback</div>
+      <div class="stat-value" style="display:flex;align-items:baseline;gap:.25rem">${pending}${_momBadge(pending,pPending,true)}</div>
+      <div class="stat-sub">${disputed} disputed</div>
+    </div>
+    <div class="stat-card sky">
+      <div class="stat-label">SLA Breaches</div>
+      <div class="stat-value" style="display:flex;align-items:baseline;gap:.25rem">${slaBreach}${_momBadge(slaBreach,pSlaBreach,true)}</div>
+      <div class="stat-sub">Over ${SLA_DAYS}-day SLA</div>
+    </div>`;
 
   renderChart('chart-reason', 'doughnut',
     Object.keys(SUB_REASONS),
@@ -2370,14 +2513,19 @@ function renderDashboard(data) {
     'Product - Related':      '#EF4444'
   };
 
-  // Build grouped map: mainReason -> { subReason -> count }
-  const grouped = {};
-  data.forEach(r => {
-    const main = r.mainReason || 'Unknown';
-    const sub  = r.subReason  || 'Unknown';
-    if (!grouped[main]) grouped[main] = {};
-    grouped[main][sub] = (grouped[main][sub] || 0) + 1;
-  });
+  // Build grouped map for current and prev month
+  function _buildGrouped(rows) {
+    const g = {};
+    rows.forEach(r => {
+      const main = r.mainReason || 'Unknown';
+      const sub  = r.subReason  || 'Unknown';
+      if (!g[main]) g[main] = {};
+      g[main][sub] = (g[main][sub] || 0) + 1;
+    });
+    return g;
+  }
+  const grouped     = _buildGrouped(data);
+  const prevGrouped = prevData ? _buildGrouped(prevData) : null;
 
   // Sort main reasons by total desc
   const mainReasonsSorted = Object.entries(grouped)
@@ -2386,19 +2534,22 @@ function renderDashboard(data) {
 
   const srSection = document.getElementById('dash-subreason-section');
   if (srSection) {
+    const hasPrev = !!prevGrouped;
     let html = `
     <div class="card" style="margin-bottom:1.5rem">
-      <div class="card-title" style="margin-bottom:.75rem">
-        🔍 Sub-Reason Breakdown
-        <small style="font-weight:400;color:#64748B;font-size:.8rem">— click a main reason to expand</small>
+      <div class="card-title" style="margin-bottom:.75rem;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem">
+        <span>🔍 Sub-Reason Breakdown <small style="font-weight:400;color:#64748B;font-size:.8rem">— click a main reason to expand</small></span>
+        ${hasPrev?'<span style="font-size:.72rem;color:#64748B;font-weight:400">Showing MoM vs previous month</span>':''}
       </div>
       <div id="dash-sr-accordion">`;
 
     mainReasonsSorted.forEach(({ main, total, subs }, idx) => {
-      const color    = MAIN_COLORS[main] || '#94A3B8';
-      const pct      = data.length ? Math.round(total / data.length * 100) : 0;
+      const color      = MAIN_COLORS[main] || '#94A3B8';
+      const pct        = data.length ? Math.round(total / data.length * 100) : 0;
+      const prevTotal  = prevGrouped ? Object.values(prevGrouped[main]||{}).reduce((a,b)=>a+b,0) : null;
       const subsSorted = Object.entries(subs).sort((a,b)=>b[1]-a[1]);
-      const maxSub   = subsSorted[0]?.[1] || 1;
+      const maxSub     = subsSorted[0]?.[1] || 1;
+      const momMain    = _momBadge(total, prevTotal, true);
 
       html += `
         <div class="sr-group" style="border:1.5px solid #E2E8F0;border-radius:.75rem;margin-bottom:.6rem;overflow:hidden">
@@ -2406,32 +2557,39 @@ function renderDashboard(data) {
             style="display:flex;align-items:center;gap:1rem;padding:.85rem 1.25rem;cursor:pointer;background:#FAFAFA;user-select:none">
             <span style="width:12px;height:12px;border-radius:50%;background:${color};flex-shrink:0"></span>
             <span style="font-weight:700;font-size:.9rem;color:#1E293B;flex:1">${escHtml(main)}</span>
-            <span class="badge" style="background:${color}20;color:${color};font-size:.78rem">${total} DSAT${total!==1?'s':''} &nbsp;·&nbsp; ${pct}%</span>
+            <span class="badge" style="background:${color}20;color:${color};font-size:.78rem">${total} DSAT${total!==1?'s':''} &nbsp;·&nbsp; ${pct}%${hasPrev&&prevTotal!==null?` &nbsp;(prev: ${prevTotal})`:''}${momMain}</span>
             <span id="dash-sr-chevron-${idx}" style="color:#94A3B8;transition:transform .2s;font-size:.85rem">▶</span>
           </div>
           <div id="dash-sr-body-${idx}" style="display:none;padding:.75rem 1.25rem 1rem">
             <table style="width:100%;font-size:.83rem;border-collapse:collapse">
               <thead>
                 <tr>
-                  <th style="text-align:left;padding:.4rem .5rem;color:#64748B;font-size:.75rem;border-bottom:1px solid #F1F5F9;width:35%">Sub-Reason</th>
-                  <th style="text-align:center;padding:.4rem .5rem;color:#64748B;font-size:.75rem;border-bottom:1px solid #F1F5F9;width:8%">#</th>
-                  <th style="text-align:center;padding:.4rem .5rem;color:#64748B;font-size:.75rem;border-bottom:1px solid #F1F5F9;width:8%">% of Main</th>
-                  <th style="padding:.4rem .5rem;border-bottom:1px solid #F1F5F9;">Participation</th>
+                  <th style="text-align:left;padding:.4rem .5rem;color:#64748B;font-size:.75rem;border-bottom:1px solid #F1F5F9">Sub-Reason</th>
+                  <th style="text-align:center;padding:.4rem .5rem;color:#64748B;font-size:.75rem;border-bottom:1px solid #F1F5F9">This Month</th>
+                  ${hasPrev?'<th style="text-align:center;padding:.4rem .5rem;color:#64748B;font-size:.75rem;border-bottom:1px solid #F1F5F9">Prev Month</th><th style="text-align:center;padding:.4rem .5rem;color:#64748B;font-size:.75rem;border-bottom:1px solid #F1F5F9">MoM</th>':''}
+                  <th style="text-align:center;padding:.4rem .5rem;color:#64748B;font-size:.75rem;border-bottom:1px solid #F1F5F9">% of Main</th>
+                  <th style="padding:.4rem .5rem;border-bottom:1px solid #F1F5F9;color:#64748B;font-size:.75rem">Share</th>
                 </tr>
               </thead>
               <tbody>`;
 
       subsSorted.forEach(([sub, cnt]) => {
-        const subPct = Math.round(cnt / total * 100);
-        const barW   = Math.round(cnt / maxSub * 100);
+        const subPct  = Math.round(cnt / total * 100);
+        const barW    = Math.round(cnt / maxSub * 100);
+        const prevCnt = prevGrouped ? (prevGrouped[main]?.[sub] || 0) : null;
+        const d       = prevCnt !== null ? _momPct(cnt, prevCnt) : null;
+        const dCell   = d === null ? '' : (d === 0
+          ? `<span style="color:#94A3B8;font-size:.72rem">=</span>`
+          : `<span style="font-size:.72rem;font-weight:700;color:${d<0?'#10B981':'#EF4444'}">${d>0?'↑':'↓'}${Math.abs(d)}%</span>`);
         html += `
                 <tr style="border-bottom:1px solid #F8FAFC">
                   <td style="padding:.5rem .5rem;color:#374151;font-weight:500">${escHtml(sub)}</td>
                   <td style="text-align:center;padding:.5rem .5rem;font-weight:700;color:#1E293B">${cnt}</td>
+                  ${hasPrev?`<td style="text-align:center;padding:.5rem .5rem;color:#64748B">${prevCnt??'—'}</td><td style="text-align:center;padding:.5rem .5rem">${dCell}</td>`:''}
                   <td style="text-align:center;padding:.5rem .5rem;color:#64748B">${subPct}%</td>
                   <td style="padding:.5rem .5rem">
-                    <div style="background:#F1F5F9;border-radius:99px;height:8px;width:100%">
-                      <div style="background:${color};border-radius:99px;height:8px;width:${barW}%;transition:width .3s"></div>
+                    <div style="background:#F1F5F9;border-radius:99px;height:7px;width:100%">
+                      <div style="background:${color};border-radius:99px;height:7px;width:${barW}%;transition:width .3s"></div>
                     </div>
                   </td>
                 </tr>`;
@@ -2448,86 +2606,70 @@ function renderDashboard(data) {
     srSection.innerHTML = html;
   }
 
-  // ── Enrichment KPIs (only shown when enrichment data exists) ──
-  const enriched = data.filter(r => r.channel || r.store || r.ltr);
-  if (enriched.length) {
-    // LTR breakdown
-    const ltrCounts = {};
-    enriched.forEach(r => { if (r.ltr) ltrCounts[r.ltr] = (ltrCounts[r.ltr]||0)+1; });
-    // Top stores
-    const storeCounts = {};
-    enriched.forEach(r => { if (r.store) storeCounts[r.store] = (storeCounts[r.store]||0)+1; });
-    const topStores = Object.entries(storeCounts).sort((a,b)=>b[1]-a[1]).slice(0,8);
-    // Lifespan segments
-    const segCounts = {};
-    enriched.forEach(r => { if (r.lifespanSegment) segCounts[r.lifespanSegment] = (segCounts[r.lifespanSegment]||0)+1; });
-    // Contact reasons
-    const crCounts = {};
-    enriched.forEach(r => { if (r.contactReason) crCounts[r.contactReason] = (crCounts[r.contactReason]||0)+1; });
-    const topCR = Object.entries(crCounts).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  // ── Enrichment KPIs as MoM tables ──────────────────────────────────────────
+  const enriched     = data.filter(r => r.channel || r.store || r.ltr);
+  const prevEnriched = prevData ? prevData.filter(r => r.channel || r.store || r.ltr) : null;
 
-    // Add enrichment section to page if not already there
-    let enrichSection = document.getElementById('dash-enrichment-section');
-    if (!enrichSection) {
-      enrichSection = document.createElement('div');
-      enrichSection.id = 'dash-enrichment-section';
-      document.getElementById('dash-recent').parentElement.after(enrichSection);
+  const enrichSection = document.getElementById('dash-enrichment-section');
+  if (enrichSection) {
+    if (!enriched.length) { enrichSection.innerHTML = ''; return; }
+
+    function _countBy(rows, key) {
+      const m = {};
+      rows.forEach(r => { const v=r[key]; if (v) m[v]=(m[v]||0)+1; });
+      return m;
     }
+    const ltrCurr = _countBy(enriched, 'ltr');
+    const ltrPrev = prevEnriched ? _countBy(prevEnriched, 'ltr') : null;
+    const stoCurr = _countBy(enriched, 'store');
+    const stoPrev = prevEnriched ? _countBy(prevEnriched, 'store') : null;
+    const segCurr = _countBy(enriched, 'lifespanSegment');
+    const segPrev = prevEnriched ? _countBy(prevEnriched, 'lifespanSegment') : null;
+    const crCurr  = _countBy(enriched, 'contactReason');
+    const crPrev  = prevEnriched ? _countBy(prevEnriched, 'contactReason') : null;
+
+    function _enrichTable(title, currMap, prevMap, topN) {
+      const rows = Object.entries(currMap).sort((a,b)=>b[1]-a[1]).slice(0, topN||8);
+      const hasPrev = !!prevMap;
+      const thS = `padding:.5rem .75rem;text-align:left;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#64748B;border-bottom:2px solid #E2E8F0;background:#F8FAFC;position:sticky;top:0`;
+      const thC = thS+';text-align:center';
+      let t = `<div style="font-size:.82rem;font-weight:700;color:#374151;margin-bottom:.5rem">${title}</div>
+        <div class="table-wrap"><table style="font-size:.82rem"><thead><tr>
+          <th style="${thS}">Segment</th>
+          <th style="${thC}">This Month</th>
+          ${hasPrev?`<th style="${thC}">Prev</th><th style="${thC}">MoM Δ</th>`:''}
+        </tr></thead><tbody>`;
+      rows.forEach(([label, cnt]) => {
+        const prevCnt = hasPrev ? (prevMap[label]||0) : null;
+        const d = prevCnt !== null ? _momPct(cnt, prevCnt) : null;
+        const ltr = label.toLowerCase();
+        const labelColor = ltr.includes('promot')?'#059669':ltr.includes('detract')?'#DC2626':'';
+        const dCell = d===null?'' : d===0
+          ? `<span style="color:#94A3B8;font-size:.7rem">=</span>`
+          : `<span style="font-size:.7rem;font-weight:700;color:${d<0?'#10B981':'#EF4444'}">${d>0?'↑':'↓'}${Math.abs(d)}%</span>`;
+        t += `<tr>
+          <td style="padding:.45rem .75rem;font-weight:500;color:${labelColor||'#374151'}">${escHtml(label)}</td>
+          <td style="padding:.45rem .75rem;text-align:center;font-weight:700;color:#1E293B">${cnt}</td>
+          ${hasPrev?`<td style="padding:.45rem .75rem;text-align:center;color:#64748B">${prevCnt??'—'}</td><td style="padding:.45rem .75rem;text-align:center">${dCell}</td>`:''}
+        </tr>`;
+      });
+      t += `</tbody></table></div>`;
+      return t;
+    }
+
     enrichSection.innerHTML = `
-      <div class="card" style="margin-top:1.25rem">
-        <div class="card-title">📊 Enrichment Insights <small style="font-weight:400;color:#64748B;font-size:.8rem">${enriched.length} of ${data.length} records enriched</small></div>
-        <div class="charts-grid">
-          <div class="chart-card"><div class="chart-title">LTR Breakdown</div><div class="chart-wrap"><canvas id="chart-ltr"></canvas></div></div>
-          <div class="chart-card"><div class="chart-title">Top Stores by DSAT</div><div class="chart-wrap"><canvas id="chart-stores"></canvas></div></div>
-          <div class="chart-card"><div class="chart-title">Lifespan Segments</div><div class="chart-wrap"><canvas id="chart-segments"></canvas></div></div>
-          <div class="chart-card"><div class="chart-title">Top Contact Reasons</div><div class="chart-wrap"><canvas id="chart-contact-reasons"></canvas></div></div>
+      <div class="card">
+        <div class="card-title">📊 Enrichment Insights
+          <small style="font-weight:400;color:#64748B;font-size:.8rem">${enriched.length} of ${data.length} records enriched${prevEnriched?` &nbsp;·&nbsp; prev month: ${prevEnriched.length}`:''}</small>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.5rem">
+          <div>${_enrichTable('LTR Breakdown', ltrCurr, ltrPrev, 10)}</div>
+          <div>${_enrichTable('Top Stores by DSAT', stoCurr, stoPrev, 10)}</div>
+          <div>${_enrichTable('Lifespan Segments', segCurr, segPrev, 10)}</div>
+          <div>${_enrichTable('Top Contact Reasons', crCurr, crPrev, 8)}</div>
         </div>
       </div>`;
-
-    const ltrColors = {'promoter':'#10B981','passive':'#F59E0B','detractor':'#EF4444'};
-    renderChart('chart-ltr','doughnut',
-      Object.keys(ltrCounts),
-      Object.values(ltrCounts),
-      Object.keys(ltrCounts).map(k=>{
-        const v=k.toLowerCase();
-        return v.includes('promot')?'#10B981':v.includes('passive')?'#F59E0B':'#EF4444';
-      })
-    );
-    renderChart('chart-stores','bar',
-      topStores.map(([s])=>s), topStores.map(([,c])=>c),
-      topStores.map(()=>'#4F46E5')
-    );
-    if (chartInstances['chart-stores']) {
-      chartInstances['chart-stores'].options.plugins.legend={display:false};
-      chartInstances['chart-stores'].update();
-    }
-    renderChart('chart-segments','doughnut',
-      Object.keys(segCounts), Object.values(segCounts),
-      ['#7C3AED','#4F46E5','#0EA5E9','#10B981','#F59E0B','#EF4444']
-    );
-    renderChart('chart-contact-reasons','bar',
-      topCR.map(([r])=>r.length>25?r.slice(0,25)+'…':r),
-      topCR.map(([,c])=>c),
-      topCR.map(()=>'#7C3AED')
-    );
-    if (chartInstances['chart-contact-reasons']) {
-      chartInstances['chart-contact-reasons'].options.plugins.legend={display:false};
-      chartInstances['chart-contact-reasons'].update();
-    }
   }
-
-  // Recent table
-  const recent = [...data].sort((a,b)=>b.id.localeCompare(a.id)).slice(0,8);
-  document.getElementById('dash-recent').innerHTML = recent.length
-    ? `<table><thead><tr><th>Ticket</th><th>DSAT Date</th><th>Specialist</th><th>Main Reason</th><th>Feedback</th></tr></thead>
-       <tbody>${recent.map(r=>`<tr>
-         <td><strong>#${escHtml(r.ticketId)}</strong></td>
-         <td>${fmtDate(r.dsatDate)}</td>
-         <td>${escHtml(r.specialistName)}</td>
-         <td>${reasonBadge(r.mainReason)}</td>
-         <td>${feedbackBadge(r.feedbackStatus)}</td>
-       </tr>`).join('')}</tbody></table>`
-    : '<div class="empty-state"><div class="icon">📭</div><p>No DSAT records yet.</p></div>';
 }
 
 function renderChart(canvasId, type, labels, dataArr, colors) {
@@ -2584,40 +2726,191 @@ const DASH_FILTER_IDS = [
   'dash-filter-ltr','dash-filter-contact-reason'
 ];
 
+function _applyBaseFilters(rows, {sup, mgr, channel, store, lifespan, ltr, contRsn} = {}) {
+  let f = rows;
+  if (sup)      f = f.filter(r => r.supervisorName  === sup);
+  if (mgr)      f = f.filter(r => r.managerName     === mgr);
+  if (channel)  f = f.filter(r => r.channel         === channel);
+  if (store)    f = f.filter(r => r.store           === store);
+  if (lifespan) f = f.filter(r => r.lifespanSegment === lifespan);
+  if (ltr)      f = f.filter(r => r.ltr             === ltr);
+  if (contRsn)  f = f.filter(r => r.contactReason   === contRsn);
+  return f;
+}
+
+function _prevMonthStr(ym) {
+  // ym = 'YYYY-MM' → returns previous month as 'YYYY-MM'
+  if (!ym) return null;
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, m-2, 1); // m-2: JS month is 0-based, -1 more for prev
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+
 function applyDashFilters() {
   const v = id => document.getElementById(id)?.value || '';
-  const month     = v('dash-filter-month');
-  const sup       = v('dash-filter-supervisor');
-  const mgr       = v('dash-filter-manager');
-  const channel   = v('dash-filter-channel');
-  const store     = v('dash-filter-store');
-  const lifespan  = v('dash-filter-lifespan');
-  const ltr       = v('dash-filter-ltr');
-  const contRsn   = v('dash-filter-contact-reason');
+  const month   = v('dash-filter-month');
+  const sup     = v('dash-filter-supervisor');
+  const mgr     = v('dash-filter-manager');
+  const channel = v('dash-filter-channel');
+  const store   = v('dash-filter-store');
+  const lifespan= v('dash-filter-lifespan');
+  const ltr     = v('dash-filter-ltr');
+  const contRsn = v('dash-filter-contact-reason');
+  const opts    = {sup,mgr,channel,store,lifespan,ltr,contRsn};
 
-  let filtered = [...cachedData];
-  if (month)    filtered = filtered.filter(r => (r.dsatDate||r.submittedAt||'').slice(0,7) === month);
-  if (sup)      filtered = filtered.filter(r => r.supervisorName    === sup);
-  if (mgr)      filtered = filtered.filter(r => r.managerName       === mgr);
-  if (channel)  filtered = filtered.filter(r => r.channel           === channel);
-  if (store)    filtered = filtered.filter(r => r.store             === store);
-  if (lifespan) filtered = filtered.filter(r => r.lifespanSegment   === lifespan);
-  if (ltr)      filtered = filtered.filter(r => r.ltr               === ltr);
-  if (contRsn)  filtered = filtered.filter(r => r.contactReason     === contRsn);
+  // Apply non-month filters first
+  const base = _applyBaseFilters([...cachedData], opts);
+
+  // Current month filter
+  let filtered = month ? base.filter(r => (r.dsatDate||r.submittedAt||'').slice(0,7) === month) : base;
+
+  // Previous month (only when month filter is active)
+  let prevData = null;
+  if (month) {
+    const prevMonth = _prevMonthStr(month);
+    if (prevMonth) {
+      prevData = _applyBaseFilters([...cachedData], opts)
+        .filter(r => (r.dsatDate||r.submittedAt||'').slice(0,7) === prevMonth);
+    }
+  }
 
   const active = [month,sup,mgr,channel,store,lifespan,ltr,contRsn].filter(Boolean).length;
   const badge  = document.getElementById('dash-filter-badge');
   if (badge) badge.textContent = active
     ? `${active} filter${active>1?'s':''} active — ${filtered.length} record${filtered.length!==1?'s':''}`
     : '';
-  renderDashboard(filtered);
+  renderDashboard(filtered, prevData);
 }
 
 function clearDashFilters() {
   DASH_FILTER_IDS.forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+  // Reset month to current
+  const mEl = document.getElementById('dash-filter-month');
+  if (mEl) mEl.value = new Date().toISOString().slice(0,7);
   const badge = document.getElementById('dash-filter-badge');
   if (badge) badge.textContent = '';
-  renderDashboard(cachedData);
+  applyDashFilters();
+}
+
+// ══ RECORDS VIEW TOGGLE ═══════════════════════════════════════════════════════
+let _recordsView = 'table'; // 'table' | 'grouped'
+
+function setRecordsView(v) {
+  _recordsView = v;
+  document.getElementById('rec-view-table').classList.toggle('active', v==='table');
+  document.getElementById('rec-view-grouped').classList.toggle('active', v==='grouped');
+  document.getElementById('records-grouped-view').style.display   = v==='grouped' ? '' : 'none';
+  document.querySelector('.card .filters-row')?.closest('.card')  // hide filter card in grouped
+  const filterCard = document.getElementById('records-filter-card');
+  if (filterCard) filterCard.style.display = v==='table' ? '' : 'none';
+  const tableWrap = document.querySelector('#page-records .card .table-wrap');
+  if (tableWrap) tableWrap.closest('.card').style.display = v==='table' ? '' : 'none';
+  if (v === 'grouped') renderRecordsGrouped();
+  else renderRecords(cachedData);
+}
+
+function renderRecordsGrouped() {
+  const currentMonth = new Date().toISOString().slice(0,7);
+  const rows = cachedData.filter(r => (r.dsatDate||r.submittedAt||'').slice(0,7) === currentMonth);
+  const el   = document.getElementById('records-grouped-content');
+  if (!el) return;
+
+  if (!rows.length) {
+    el.innerHTML = '<div class="empty-state card"><div class="icon">📭</div><p>No records for the current month.</p></div>';
+    return;
+  }
+
+  // Group by supervisor
+  const bySupMap = {};
+  rows.forEach(r => {
+    const sup = r.supervisorName || '(Unassigned)';
+    if (!bySupMap[sup]) bySupMap[sup] = {};
+    const agent = r.specialistName || '(Unknown)';
+    if (!bySupMap[sup][agent]) bySupMap[sup][agent] = [];
+    bySupMap[sup][agent].push(r);
+  });
+
+  const d = new Date(currentMonth+'-01');
+  const monthLabel = d.toLocaleString('en-US',{month:'long',year:'numeric'});
+  const REASON_COLOR = {'Agent - Related':'#4F46E5','Customer Expectations':'#F59E0B','Process - Related':'#10B981','System - Related':'#0EA5E9','Product - Related':'#EF4444'};
+
+  let html = `<div style="font-size:.82rem;color:#64748B;margin-bottom:.75rem;font-weight:500">
+    📅 ${monthLabel} · ${rows.length} record${rows.length!==1?'s':''} · ${Object.keys(bySupMap).length} supervisors
+  </div>`;
+
+  Object.entries(bySupMap).sort(([a],[b])=>a.localeCompare(b)).forEach(([sup, agents], si) => {
+    const supTotal = Object.values(agents).reduce((t,a)=>t+a.length,0);
+    const agentCount = Object.keys(agents).length;
+    html += `
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:1rem">
+      <div onclick="toggleGroupedSup(${si})" style="display:flex;align-items:center;gap:1rem;padding:.9rem 1.25rem;cursor:pointer;background:#F8FAFC;border-bottom:1.5px solid #E2E8F0;user-select:none">
+        <span id="grp-chev-${si}" style="color:#94A3B8;transition:transform .2s;font-size:.85rem">▶</span>
+        <span style="font-weight:700;font-size:.95rem;color:#1E293B;flex:1">👤 ${escHtml(sup)}</span>
+        <span style="font-size:.78rem;color:#64748B">${agentCount} agent${agentCount!==1?'s':''}</span>
+        <span style="background:#EDE9FE;color:#5B21B6;padding:.2rem .7rem;border-radius:99px;font-size:.78rem;font-weight:700">${supTotal} DSAT${supTotal!==1?'s':''}</span>
+      </div>
+      <div id="grp-body-${si}" style="display:none">`;
+
+    Object.entries(agents).sort(([a],[b])=>a.localeCompare(b)).forEach(([agent, aRows], ai) => {
+      const uid = `${si}-${ai}`;
+      html += `
+        <div style="border-bottom:1px solid #F1F5F9">
+          <div onclick="toggleGroupedAgent('${uid}')" style="display:flex;align-items:center;gap:1rem;padding:.7rem 1.25rem .7rem 2.5rem;cursor:pointer;background:#FAFAFA;user-select:none">
+            <span id="grp-achev-${uid}" style="color:#94A3B8;font-size:.75rem;transition:transform .2s">▶</span>
+            <span style="font-weight:600;font-size:.875rem;color:#374151;flex:1">${escHtml(agent)}</span>
+            <span style="font-size:.75rem;color:#64748B">${aRows.length} ticket${aRows.length!==1?'s':''}</span>
+          </div>
+          <div id="grp-abody-${uid}" style="display:none;padding:.5rem 1.25rem .75rem 3rem">
+            <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+              <thead><tr style="background:#F8FAFC">
+                <th style="padding:.4rem .6rem;text-align:left;font-size:.7rem;font-weight:700;color:#64748B;text-transform:uppercase;border-bottom:1px solid #E2E8F0">Ticket</th>
+                <th style="padding:.4rem .6rem;font-size:.7rem;font-weight:700;color:#64748B;text-transform:uppercase;border-bottom:1px solid #E2E8F0">DSAT Date</th>
+                <th style="padding:.4rem .6rem;font-size:.7rem;font-weight:700;color:#64748B;text-transform:uppercase;border-bottom:1px solid #E2E8F0">Main Reason</th>
+                <th style="padding:.4rem .6rem;font-size:.7rem;font-weight:700;color:#64748B;text-transform:uppercase;border-bottom:1px solid #E2E8F0">Sub-Reason</th>
+                <th style="padding:.4rem .6rem;font-size:.7rem;font-weight:700;color:#64748B;text-transform:uppercase;border-bottom:1px solid #E2E8F0">Preventable</th>
+                <th style="padding:.4rem .6rem;font-size:.7rem;font-weight:700;color:#64748B;text-transform:uppercase;border-bottom:1px solid #E2E8F0">Feedback</th>
+              </tr></thead>
+              <tbody>
+                ${aRows.sort((a,b)=>b.dsatDate.localeCompare(a.dsatDate)).map(r=>{
+                  const c = REASON_COLOR[r.mainReason]||'#94A3B8';
+                  return `<tr style="border-bottom:1px solid #F8FAFC;cursor:pointer" ondblclick="openDetail('${r.id}')" title="Double-click to open detail">
+                    <td style="padding:.45rem .6rem">
+                      <span onclick="openDetail('${r.id}')" style="font-weight:700;color:#4F46E5;cursor:pointer;text-decoration:underline;text-underline-offset:2px">#${escHtml(r.ticketId)}</span>
+                    </td>
+                    <td style="padding:.45rem .6rem;color:#64748B">${fmtDate(r.dsatDate)}</td>
+                    <td style="padding:.45rem .6rem"><span style="background:${c}18;color:${c};padding:.15rem .5rem;border-radius:99px;font-size:.72rem;font-weight:700">${escHtml(r.mainReason)}</span></td>
+                    <td style="padding:.45rem .6rem;color:#374151;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.subReason)}">${escHtml(r.subReason||'—')}</td>
+                    <td style="padding:.45rem .6rem">${yesnoBadge(r.isPreventable)}</td>
+                    <td style="padding:.45rem .6rem">${feedbackBadge(r.feedbackStatus)}</td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>`;
+    });
+    html += `</div></div>`;
+  });
+
+  el.innerHTML = html;
+}
+
+function toggleGroupedSup(si) {
+  const body = document.getElementById(`grp-body-${si}`);
+  const chev = document.getElementById(`grp-chev-${si}`);
+  if (!body) return;
+  const open = body.style.display === 'none';
+  body.style.display = open ? '' : 'none';
+  if (chev) chev.style.transform = open ? 'rotate(90deg)' : '';
+}
+
+function toggleGroupedAgent(uid) {
+  const body = document.getElementById(`grp-abody-${uid}`);
+  const chev = document.getElementById(`grp-achev-${uid}`);
+  if (!body) return;
+  const open = body.style.display === 'none';
+  body.style.display = open ? '' : 'none';
+  if (chev) chev.style.transform = open ? 'rotate(90deg)' : '';
 }
 
 // ══ RECORDS ═══════════════════════════════════════════════════════════════════
@@ -3382,152 +3675,187 @@ function renderQueue(data) {
     <div class="stat-card green"><div class="stat-label">Feedback Delivered</div><div class="stat-value">${delivered}</div><div class="stat-sub">Completed</div></div>
     <div class="stat-card sky"><div class="stat-label">Total (Agent-Related)</div><div class="stat-value">${queue.length}</div><div class="stat-sub">In your queue</div></div>`;
 
-  // ── Supervisor summary table (admin only) ────────────────────────────────
+  // ── Supervisor accordion (admin) / agent accordion (supervisor) ─────────────
   const supSummaryEl = document.getElementById('queue-sup-summary');
-  if (supSummaryEl) {
-    if (!isAdmin()) {
-      supSummaryEl.innerHTML = '';
-    } else {
-      // Use the FULL unfiltered agent-related set for the summary (ignore status/sup filter)
-      const allAgentRel = data.filter(r => r.mainReason === 'Agent - Related' && r.feedbackStatus !== '');
-      const supMap = {};
-      for (const r of allAgentRel) {
-        const sup = r.supervisorName || '(Unassigned)';
-        if (!supMap[sup]) supMap[sup] = { name: sup, pending: 0, overdue: 0, disputed: 0, delivered: 0, total: 0 };
-        supMap[sup].total++;
-        if (r.feedbackStatus === 'Pending') {
-          supMap[sup].pending++;
-          if (slaDaysLeft(r.submittedAt) < 0) supMap[sup].overdue++;
-        } else if (r.feedbackStatus === 'Disputed') {
-          supMap[sup].disputed++;
-        } else if (r.feedbackStatus === 'Feedback Delivered') {
-          supMap[sup].delivered++;
-        }
-      }
+  const listEl       = document.getElementById('queue-list');
+  if (listEl) listEl.innerHTML = ''; // cards removed — all content in accordion
 
-      const rows = Object.values(supMap).sort((a, b) => {
-        // Sort by: overdue desc → disputed desc → pending desc → name asc
-        if (b.overdue  !== a.overdue)  return b.overdue  - a.overdue;
-        if (b.disputed !== a.disputed) return b.disputed - a.disputed;
-        if (b.pending  !== a.pending)  return b.pending  - a.pending;
+  if (supSummaryEl) {
+    // Build supMap with per-agent per-ticket detail
+    const allAgentRel = data.filter(r => r.mainReason === 'Agent - Related' && r.feedbackStatus !== '');
+    const supMap = {};
+    for (const r of allAgentRel) {
+      const sup   = r.supervisorName   || '(Unassigned)';
+      const agent = r.specialistName   || '(Unknown)';
+      if (!supMap[sup]) supMap[sup] = { name:sup, pending:0, overdue:0, disputed:0, delivered:0, total:0, agents:{} };
+      if (!supMap[sup].agents[agent]) supMap[sup].agents[agent] = { name:agent, records:[] };
+      supMap[sup].agents[agent].records.push(r);
+      supMap[sup].total++;
+      if (r.feedbackStatus==='Pending') {
+        supMap[sup].pending++;
+        if (slaDaysLeft(r.submittedAt)<0) supMap[sup].overdue++;
+      } else if (r.feedbackStatus==='Disputed')           supMap[sup].disputed++;
+      else if (r.feedbackStatus==='Feedback Delivered')   supMap[sup].delivered++;
+    }
+
+    // For non-admins (supervisor view): show only their own agents
+    let supRows;
+    if (isAdmin()) {
+      supRows = Object.values(supMap).sort((a,b)=>{
+        if (b.overdue!==a.overdue) return b.overdue-a.overdue;
+        if (b.disputed!==a.disputed) return b.disputed-a.disputed;
+        if (b.pending!==a.pending) return b.pending-a.pending;
         return a.name.localeCompare(b.name);
       });
-
-      if (!rows.length) {
-        supSummaryEl.innerHTML = '';
-      } else {
-        const activeSup = document.getElementById('queue-filter-supervisor')?.value || '';
-        supSummaryEl.innerHTML = `
-          <div class="card" style="margin-bottom:1.25rem;padding:0;overflow:hidden">
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:.85rem 1.25rem;border-bottom:1.5px solid #F1F5F9">
-              <div class="card-title" style="margin:0">👥 Supervisor Feedback Status</div>
-              ${activeSup ? `<button class="btn btn-secondary btn-sm" onclick="clearQueueFilters()" style="font-size:.75rem">✕ Clear filter</button>` : ''}
-            </div>
-            <div style="overflow-x:auto">
-              <table style="width:100%;border-collapse:collapse;font-size:.85rem">
-                <thead>
-                  <tr style="background:#F8FAFC">
-                    <th style="padding:.6rem 1rem;text-align:left;font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E2E8F0">Supervisor</th>
-                    <th style="padding:.6rem 1rem;text-align:center;font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E2E8F0">Pending</th>
-                    <th style="padding:.6rem 1rem;text-align:center;font-size:.72rem;font-weight:700;color:#EF4444;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E2E8F0">Overdue</th>
-                    <th style="padding:.6rem 1rem;text-align:center;font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E2E8F0">Disputed</th>
-                    <th style="padding:.6rem 1rem;text-align:center;font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E2E8F0">Delivered</th>
-                    <th style="padding:.6rem 1rem;text-align:center;font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E2E8F0">Total</th>
-                    <th style="padding:.6rem 1rem;text-align:left;font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E2E8F0;min-width:130px">Compliance</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${rows.map(s => {
-                    const rate    = s.total ? Math.round(s.delivered / s.total * 100) : 0;
-                    const barColor = rate >= 80 ? '#10B981' : rate >= 50 ? '#F59E0B' : '#EF4444';
-                    const isActive = s.name === activeSup;
-                    const rowBg   = isActive ? 'background:#EEF2FF' : (s.overdue ? 'background:#FFF5F5' : s.disputed ? 'background:#FFFBEB' : '');
-                    return `<tr style="border-bottom:1px solid #F1F5F9;cursor:pointer;transition:background .1s;${rowBg}"
-                        onclick="filterQueueBySupervisor('${escHtml(s.name)}')"
-                        onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background='${isActive?'#EEF2FF':s.overdue?'#FFF5F5':s.disputed?'#FFFBEB':''}'">
-                      <td style="padding:.65rem 1rem;font-weight:600;color:#1E293B">
-                        ${isActive ? '<span style="color:#4F46E5">▶ </span>' : ''}${escHtml(s.name)}
-                      </td>
-                      <td style="padding:.65rem 1rem;text-align:center">
-                        ${s.pending > 0 ? `<span style="background:#FEF3C7;color:#92400E;padding:.2rem .55rem;border-radius:99px;font-weight:700;font-size:.82rem">${s.pending}</span>` : '<span style="color:#94A3B8">—</span>'}
-                      </td>
-                      <td style="padding:.65rem 1rem;text-align:center">
-                        ${s.overdue > 0 ? `<span style="background:#FEE2E2;color:#991B1B;padding:.2rem .55rem;border-radius:99px;font-weight:700;font-size:.82rem">⚠ ${s.overdue}</span>` : '<span style="color:#94A3B8">—</span>'}
-                      </td>
-                      <td style="padding:.65rem 1rem;text-align:center">
-                        ${s.disputed > 0 ? `<span style="background:#FEF3C7;color:#B45309;padding:.2rem .55rem;border-radius:99px;font-weight:700;font-size:.82rem">${s.disputed}</span>` : '<span style="color:#94A3B8">—</span>'}
-                      </td>
-                      <td style="padding:.65rem 1rem;text-align:center">
-                        ${s.delivered > 0 ? `<span style="background:#D1FAE5;color:#065F46;padding:.2rem .55rem;border-radius:99px;font-weight:700;font-size:.82rem">${s.delivered}</span>` : '<span style="color:#94A3B8">—</span>'}
-                      </td>
-                      <td style="padding:.65rem 1rem;text-align:center;font-weight:700;color:#1E293B">${s.total}</td>
-                      <td style="padding:.65rem 1rem">
-                        <div style="display:flex;align-items:center;gap:.5rem">
-                          <div style="flex:1;background:#F1F5F9;border-radius:99px;height:6px;overflow:hidden">
-                            <div style="width:${rate}%;background:${barColor};height:100%;border-radius:99px;transition:width .3s"></div>
-                          </div>
-                          <span style="font-size:.78rem;font-weight:700;color:${barColor};white-space:nowrap;min-width:34px">${rate}%</span>
-                        </div>
-                      </td>
-                    </tr>`;
-                  }).join('')}
-                </tbody>
-              </table>
-            </div>
-            <div style="padding:.6rem 1rem;font-size:.75rem;color:#94A3B8;border-top:1px solid #F1F5F9">
-              Click any row to filter the queue below · Compliance = Delivered ÷ Total · Sorted by urgency
-            </div>
-          </div>`;
-      }
+    } else {
+      const u = getUser();
+      const myName = Object.keys(supMap).find(n=>
+        allAgentRel.find(r=>r.supervisorEmail.toLowerCase()===(u?.email||'').toLowerCase() && r.supervisorName===n)
+      );
+      supRows = myName ? [supMap[myName]] : [];
     }
-  }
 
-  const list = document.getElementById('queue-list');
-  if (!queue.length) {
-    list.innerHTML='<div class="empty-state"><div class="icon">🎉</div><p>No Agent-Related DSATs in queue.</p></div>';
-    return;
-  }
+    if (!supRows.length) { supSummaryEl.innerHTML=''; return; }
 
-  list.innerHTML = queue.map(r => {
-    const daysLeft = slaDaysLeft(r.submittedAt);
-    const slaClass = daysLeft < 0 ? 'over' : daysLeft <= 3 ? 'warn' : 'ok';
-    const slaBarW  = daysLeft < 0 ? 100 : Math.max(0, Math.round((1-daysLeft/SLA_DAYS)*100));
-    const isDisp   = r.feedbackStatus==='Disputed';
+    function _queueTicketRow(r, showSup) {
+      const daysLeft = slaDaysLeft(r.submittedAt);
+      const slaClass = daysLeft<0?'over':daysLeft<=3?'warn':'ok';
+      const isDisp   = r.feedbackStatus==='Disputed';
+      const isOD     = r.feedbackStatus==='Pending' && daysLeft<0;
+      return `
+        <tr style="border-bottom:1px solid #F8FAFC;cursor:pointer" ondblclick="openDetail('${r.id}')" title="Double-click for full detail">
+          <td style="padding:.45rem .75rem">
+            <span onclick="openDetail('${r.id}')" style="font-weight:700;color:#4F46E5;cursor:pointer;text-decoration:underline;text-underline-offset:2px">#${escHtml(r.ticketId)}</span>
+          </td>
+          <td style="padding:.45rem .75rem;color:#64748B;white-space:nowrap">${fmtDate(r.dsatDate)}</td>
+          <td style="padding:.45rem .75rem">${feedbackBadge(r.feedbackStatus)}${isOD?`<span style="font-size:.68rem;font-weight:700;color:#EF4444;margin-left:.3rem">⚠ OD</span>`:''}</td>
+          <td style="padding:.45rem .75rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#374151" title="${escHtml(r.subReason)}">${escHtml(r.subReason||'—')}</td>
+          <td style="padding:.45rem .75rem">${yesnoBadge(r.isPreventable)}</td>
+          <td style="padding:.45rem .75rem">
+            ${r.feedbackStatus==='Pending'&&isSupervisor()?`<button class="btn btn-success btn-sm" onclick="openFeedbackModal('${r.id}')">✍ Feedback</button>`:''}
+            ${r.feedbackStatus==='Disputed'&&isAdmin()?`<button class="btn btn-warning btn-sm" onclick="openDisputeReview('${r.id}')">🔍 Review</button>`:''}
+          </td>
+        </tr>`;
+    }
 
-    return `<div class="queue-card ${isDisp?'disputed':''}">
-      <div class="queue-header">
-        <div>
-          <div class="queue-agent">
-            ${feedbackBadge(r.feedbackStatus)}
-            <span style="margin-left:.5rem">${escHtml(r.specialistName)}</span>
-            ${r.editedFlag==='TRUE'?'<span class="badge badge-edited" style="margin-left:.4rem">✏ Edited</span>':''}
-          </div>
-          <div class="queue-meta">Ticket #${escHtml(r.ticketId)} · DSAT Date: ${fmtDate(r.dsatDate)} · Sub: ${escHtml(r.subReason)}</div>
-        </div>
-        <div style="text-align:right;min-width:140px">
-          ${r.feedbackStatus==='Pending'?`
-            <div class="sla-text ${slaClass}">${daysLeft<0?'⚠ OVERDUE':'⏱ '+daysLeft+' day'+((daysLeft!==1)?'s':'')+' left'}</div>
-            <div class="sla-bar-wrap"><div class="sla-bar sla-${slaClass}" style="width:${slaBarW}%"></div></div>
-          `:''}
-        </div>
+    let html = `<div class="card" style="padding:0;overflow:hidden;margin-bottom:1.25rem">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:.85rem 1.25rem;border-bottom:1.5px solid #F1F5F9">
+        <div class="card-title" style="margin:0">👥 Supervisor Feedback Status</div>
+        <span style="font-size:.72rem;color:#94A3B8">Click a supervisor row to expand · ticket ID to view detail</span>
       </div>
-      <div class="queue-detail">
-        <div class="queue-field"><strong>Supervisor</strong>${escHtml(r.supervisorName||'—')}</div>
-        <div class="queue-field"><strong>Manager</strong>${escHtml(r.managerName||'—')}</div>
-        <div class="queue-field"><strong>Submitted</strong>${fmtDateTime(r.submittedAt)}</div>
-        <div class="queue-field"><strong>Preventable?</strong>${yesnoBadge(r.isPreventable)}</div>
-      </div>
-      ${r.supportingDetails?`<div style="font-size:.82rem;color:#475569;background:#F8FAFC;border-radius:.5rem;padding:.75rem;margin-bottom:.75rem"><strong>Supporting Details:</strong> ${escHtml(r.supportingDetails)}</div>`:''}
-      ${r.supervisorFeedback?`<div style="font-size:.82rem;color:#065F46;background:#D1FAE5;border-radius:.5rem;padding:.75rem;margin-bottom:.75rem"><strong>Feedback Provided:</strong> ${escHtml(r.supervisorFeedback)}</div>`:''}
-      ${isDisp&&r.disputeNotes?`<div style="font-size:.82rem;color:#991B1B;background:#FEE2E2;border-radius:.5rem;padding:.75rem;margin-bottom:.75rem"><strong>Dispute Notes:</strong> ${escHtml(r.disputeNotes)}</div>`:''}
-      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-        <button class="btn btn-secondary btn-sm" onclick="openDetail('${r.id}')">View Full Record</button>
-        ${(r.feedbackStatus==='Pending' && (isSupervisor()))?`<button class="btn btn-success btn-sm" onclick="openFeedbackModal('${r.id}')">✍ Submit Feedback</button>`:''}
-        ${(r.feedbackStatus==='Disputed' && isAdmin())?`<button class="btn btn-warning btn-sm" onclick="openDisputeReview('${r.id}')">🔍 Review Dispute</button>`:''}
-        ${(r.feedbackStatus==='Feedback Delivered' && isSupervisor() && !isAdmin())?`<button class="btn btn-secondary btn-sm" onclick="openFeedbackModal('${r.id}')">Update Feedback</button>`:''}
+      <div style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:.85rem">
+        <thead><tr style="background:#F8FAFC">
+          <th style="padding:.6rem 1rem;text-align:left;font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E2E8F0;min-width:180px">Supervisor</th>
+          <th style="padding:.6rem 1rem;text-align:center;font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E2E8F0">Pending</th>
+          <th style="padding:.6rem 1rem;text-align:center;font-size:.72rem;font-weight:700;color:#EF4444;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E2E8F0">Overdue</th>
+          <th style="padding:.6rem 1rem;text-align:center;font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E2E8F0">Disputed</th>
+          <th style="padding:.6rem 1rem;text-align:center;font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E2E8F0">Delivered</th>
+          <th style="padding:.6rem 1rem;text-align:center;font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E2E8F0">Total</th>
+          <th style="padding:.6rem 1rem;text-align:center;font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E2E8F0">Evaluated</th>
+          <th style="padding:.6rem 1rem;text-align:left;font-size:.72rem;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid #E2E8F0;min-width:130px">Compliance</th>
+        </tr></thead>
+        <tbody id="queue-sup-tbody">`;
+
+    supRows.forEach((s, si) => {
+      const rate      = s.total ? Math.round(s.delivered/s.total*100) : 0;
+      const barColor  = rate>=80?'#10B981':rate>=50?'#F59E0B':'#EF4444';
+      const rowBg     = s.overdue?'#FFF5F5':s.disputed?'#FFFBEB':'';
+      const evaluated = s.delivered + s.disputed; // delivered + disputed = "evaluated"
+
+      // Supervisor header row
+      html += `
+        <tr id="qsup-row-${si}" style="border-bottom:1px solid #F1F5F9;cursor:pointer;background:${rowBg}"
+            onclick="toggleQueueSup(${si})"
+            onmouseover="this.style.background='#F8FAFC'" onmouseout="this.style.background='${rowBg}'">
+          <td style="padding:.65rem 1rem;font-weight:700;color:#1E293B">
+            <span id="qsup-chev-${si}" style="font-size:.75rem;color:#94A3B8;margin-right:.4rem;transition:transform .2s;display:inline-block">▶</span>
+            ${escHtml(s.name)}
+          </td>
+          <td style="padding:.65rem 1rem;text-align:center">${s.pending>0?`<span style="background:#FEF3C7;color:#92400E;padding:.2rem .55rem;border-radius:99px;font-weight:700;font-size:.82rem">${s.pending}</span>`:'<span style="color:#94A3B8">—</span>'}</td>
+          <td style="padding:.65rem 1rem;text-align:center">${s.overdue>0?`<span style="background:#FEE2E2;color:#991B1B;padding:.2rem .55rem;border-radius:99px;font-weight:700;font-size:.82rem">⚠ ${s.overdue}</span>`:'<span style="color:#94A3B8">—</span>'}</td>
+          <td style="padding:.65rem 1rem;text-align:center">${s.disputed>0?`<span style="background:#FEF3C7;color:#B45309;padding:.2rem .55rem;border-radius:99px;font-weight:700;font-size:.82rem">${s.disputed}</span>`:'<span style="color:#94A3B8">—</span>'}</td>
+          <td style="padding:.65rem 1rem;text-align:center">${s.delivered>0?`<span style="background:#D1FAE5;color:#065F46;padding:.2rem .55rem;border-radius:99px;font-weight:700;font-size:.82rem">${s.delivered}</span>`:'<span style="color:#94A3B8">—</span>'}</td>
+          <td style="padding:.65rem 1rem;text-align:center;font-weight:700;color:#1E293B">${s.total}</td>
+          <td style="padding:.65rem 1rem;text-align:center;font-weight:600;color:#374151">${evaluated}</td>
+          <td style="padding:.65rem 1rem">
+            <div style="display:flex;align-items:center;gap:.5rem">
+              <div style="flex:1;background:#F1F5F9;border-radius:99px;height:6px;overflow:hidden">
+                <div style="width:${rate}%;background:${barColor};height:100%;border-radius:99px;transition:width .3s"></div>
+              </div>
+              <span style="font-size:.78rem;font-weight:700;color:${barColor};white-space:nowrap;min-width:34px">${rate}%</span>
+            </div>
+          </td>
+        </tr>
+        <!-- Expanded agent rows for supervisor ${si} -->
+        <tr id="qsup-expand-${si}" style="display:none">
+          <td colspan="8" style="padding:0;background:#FAFBFF;border-bottom:2px solid #E2E8F0">
+            <div style="padding:.5rem 1.25rem .75rem 2.5rem">`;
+
+      // Per-agent rows
+      Object.values(s.agents).sort((a,b)=>a.name.localeCompare(b.name)).forEach((ag, ai) => {
+        const agPending   = ag.records.filter(r=>r.feedbackStatus==='Pending').length;
+        const agDelivered = ag.records.filter(r=>r.feedbackStatus==='Feedback Delivered').length;
+        const agDisputed  = ag.records.filter(r=>r.feedbackStatus==='Disputed').length;
+        const agEval      = agDelivered + agDisputed;
+        const uid = `${si}-${ai}`;
+        html += `
+              <div style="margin:.4rem 0;border:1px solid #E2E8F0;border-radius:.6rem;overflow:hidden">
+                <div onclick="toggleQueueAgent('${uid}')" style="display:flex;align-items:center;gap:.75rem;padding:.6rem 1rem;cursor:pointer;background:#F8FAFC;user-select:none">
+                  <span id="qag-chev-${uid}" style="font-size:.7rem;color:#94A3B8;transition:transform .2s;display:inline-block">▶</span>
+                  <span style="font-weight:600;font-size:.85rem;color:#374151;flex:1">${escHtml(ag.name)}</span>
+                  <span style="font-size:.73rem;color:#64748B">${ag.records.length} tickets · Eval: ${agEval} · Pending: ${agPending}</span>
+                </div>
+                <div id="qag-body-${uid}" style="display:none;padding:.4rem .75rem .6rem">
+                  <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+                    <thead><tr style="background:#F8FAFC">
+                      <th style="padding:.35rem .75rem;font-size:.7rem;font-weight:700;text-transform:uppercase;color:#64748B;border-bottom:1px solid #E2E8F0">Ticket</th>
+                      <th style="padding:.35rem .75rem;font-size:.7rem;font-weight:700;text-transform:uppercase;color:#64748B;border-bottom:1px solid #E2E8F0">DSAT Date</th>
+                      <th style="padding:.35rem .75rem;font-size:.7rem;font-weight:700;text-transform:uppercase;color:#64748B;border-bottom:1px solid #E2E8F0">Status</th>
+                      <th style="padding:.35rem .75rem;font-size:.7rem;font-weight:700;text-transform:uppercase;color:#64748B;border-bottom:1px solid #E2E8F0">Sub-Reason</th>
+                      <th style="padding:.35rem .75rem;font-size:.7rem;font-weight:700;text-transform:uppercase;color:#64748B;border-bottom:1px solid #E2E8F0">Preventable</th>
+                      <th style="padding:.35rem .75rem;font-size:.7rem;font-weight:700;text-transform:uppercase;color:#64748B;border-bottom:1px solid #E2E8F0">Action</th>
+                    </tr></thead>
+                    <tbody>
+                      ${ag.records.sort((a,b)=>{
+                        const o={'Disputed':0,'Pending':1,'Feedback Delivered':2};
+                        return (o[a.feedbackStatus]??3)-(o[b.feedbackStatus]??3);
+                      }).map(r=>_queueTicketRow(r)).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              </div>`;
+      });
+
+      html += `</div></td></tr>`;
+    });
+
+    html += `</tbody></table></div>
+      <div style="padding:.6rem 1rem;font-size:.72rem;color:#94A3B8;border-top:1px solid #F1F5F9">
+        Click supervisor row to expand agents · Click ticket # or double-click row to view detail · Evaluated = Delivered + Disputed · Compliance = Delivered ÷ Total
       </div>
     </div>`;
-  }).join('');
+
+    supSummaryEl.innerHTML = html;
+  }
+}
+
+function toggleQueueSup(si) {
+  const expRow = document.getElementById(`qsup-expand-${si}`);
+  const chev   = document.getElementById(`qsup-chev-${si}`);
+  if (!expRow) return;
+  const open = expRow.style.display === 'none';
+  expRow.style.display = open ? '' : 'none';
+  if (chev) chev.style.transform = open ? 'rotate(90deg)' : '';
+}
+
+function toggleQueueAgent(uid) {
+  const body = document.getElementById(`qag-body-${uid}`);
+  const chev = document.getElementById(`qag-chev-${uid}`);
+  if (!body) return;
+  const open = body.style.display === 'none';
+  body.style.display = open ? '' : 'none';
+  if (chev) chev.style.transform = open ? 'rotate(90deg)' : '';
 }
 
 function slaDaysLeft(submittedAt) {
@@ -4822,28 +5150,30 @@ async function initApp() {
   analyticsMonth = new Date().toISOString().slice(0,7);
   const mEl = document.getElementById('analytics-month');
   if (mEl) mEl.value = analyticsMonth;
+
+  // Default dashboard to current month
+  const dashMonthEl = document.getElementById('dash-filter-month');
+  if (dashMonthEl && !dashMonthEl.value) dashMonthEl.value = new Date().toISOString().slice(0,7);
+
   updateRoleUI();
 
   // ── Step 1: render from localStorage cache instantly if available ────────────
   const cached = loadDataCache();
   if (cached && cached.records && cached.records.length) {
-    cachedData      = cached.records;   // already normalised when saved
+    cachedData      = cached.records;
     cachedHierarchy = cached.hierarchy || [];
     updateRoleUI();
     buildSupervisorFilter();
     populateSpecialistDropdown();
-    renderDashboard(cachedData);
-    // ── Step 2: refresh silently in background — no overlay, no disruption ────
+    applyDashFilters();
+    // ── Step 2: refresh silently in background ────────────────────────────────
     apiFetch(true).then(d => {
       cachedData = d;
       updateRoleUI();
-      if (!isModalOpen()) renderDashboard(d);
+      if (!isModalOpen()) applyDashFilters();
     });
   } else {
-    // First visit (no cache yet) — show the UI immediately with a loading
-    // indicator inside the dashboard, then populate once data arrives.
-    // The user never stares at a blank screen regardless of server speed.
-    // Skeleton placeholders for stat cards
+    // First visit — show skeleton while waiting for API
     document.getElementById('dash-stats').innerHTML =
       Array(6).fill(0).map(() =>
         `<div class="stat-card indigo" style="pointer-events:none">
@@ -4852,11 +5182,11 @@ async function initApp() {
            <div class="skeleton" style="height:.55rem;width:40%;margin-top:.5rem"></div>
          </div>`
       ).join('');
-    apiFetch(true)   // silent — no full-page overlay
+    apiFetch(true)
       .then(d => {
         cachedData = d;
         updateRoleUI();
-        if (!isModalOpen()) renderDashboard(d);
+        if (!isModalOpen()) applyDashFilters();
       })
       .catch(() => {
         document.getElementById('dash-stats').innerHTML =
@@ -4866,16 +5196,16 @@ async function initApp() {
       });
   }
 
-  // ── Auto-refresh every 5 minutes — fully silent, never disrupts modals ──────
+  // ── Auto-refresh every 5 minutes ─────────────────────────────────────────────
   setInterval(async () => {
-    const d = await apiFetch(true); // silent=true
+    const d = await apiFetch(true);
     cachedData = d;
-    if (isModalOpen()) return; // don't disrupt an open edit/feedback modal
-    if (currentPage==='dashboard')  renderDashboard(d);
-    else if (currentPage==='records')  renderRecords(d);
-    else if (currentPage==='queue')    renderQueue(d);
+    if (isModalOpen()) return;
+    if (currentPage==='dashboard')   applyDashFilters();
+    else if (currentPage==='records') renderRecords(d);
+    else if (currentPage==='queue')   renderQueue(d);
     updateRoleUI();
-  }, 300000); // 5 minutes
+  }, 300000);
 }
 
 (function boot() {
