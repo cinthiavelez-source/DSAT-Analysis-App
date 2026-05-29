@@ -1527,7 +1527,7 @@ const ALLOWED_DOMAIN      = 'cookunity.com';
 const SLA_DAYS            = 15;
 
 // ─── LOCAL DATA CACHE (instant re-load on return visits) ─────────────────────
-const DATA_CACHE_KEY = 'dsat_data_v3'; // bumped — forces fresh fetch to pick up agentAckToken/agentAckAt columns
+const DATA_CACHE_KEY = 'dsat_data_v4'; // bumped — normalizeRow now includes agentAckToken/agentAckAt
 const DATA_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
 // ── SIDEBAR HELPERS ──────────────────────────────────────────────────────────
@@ -1834,6 +1834,8 @@ function normalizeRow(r) {
     feedbackProvidedAt: String(r.feedbackProvidedAt||''), disputeNotes: String(r.disputeNotes||''),
     disputeReviewedBy: String(r.disputeReviewedBy||''), disputeReviewedAt: String(r.disputeReviewedAt||''),
     correctionType: String(r.correctionType||''), correctionNotes: String(r.correctionNotes||''),
+    agentAckToken: String(r.agentAckToken||''),
+    agentAckAt:    String(r.agentAckAt||''),
     // Enrichment fields (from weekly CSV upload, joined by ticketId)
     channel:         String(r.channel||''),
     customerEmail:   String(r.customerEmail||''),
