@@ -676,66 +676,36 @@ tr:hover td{background:#FAFBFF}
         <div class="page-title">All DSAT Records</div>
         <div class="page-sub" id="records-count-label">Loading…</div>
       </div>
-      <div style="display:flex;gap:.5rem;align-items:center">
-        <div style="display:flex;border:1.5px solid #E2E8F0;border-radius:.5rem;overflow:hidden">
-          <button id="rec-view-table" class="an-mode-btn active" onclick="setRecordsView('table')" style="border:none">☰ Table</button>
-          <button id="rec-view-grouped" class="an-mode-btn" onclick="setRecordsView('grouped')" style="border:none">👥 By Supervisor</button>
+      <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
+        <!-- Month picker -->
+        <div style="display:flex;align-items:center;gap:.5rem;background:#fff;border:1.5px solid #E2E8F0;border-radius:.5rem;padding:.35rem .75rem">
+          <span style="font-size:.8rem;color:#64748B;font-weight:600;white-space:nowrap">📅 Month</span>
+          <select id="rec-month-filter" onchange="renderRecordsGrouped()" style="border:none;background:transparent;font-size:.85rem;font-weight:600;color:#1E293B;cursor:pointer;outline:none;padding:0">
+            <option value="">All Time</option>
+          </select>
         </div>
         <button class="btn btn-secondary btn-sm" onclick="exportCSV()">⬇ Export CSV</button>
       </div>
     </div>
-    <!-- Grouped by supervisor view (current month) -->
-    <div id="records-grouped-view" style="display:none">
-      <div id="records-grouped-content"></div>
-    </div>
-    <div class="card" id="records-filter-card">
-      <div class="filters-row">
-        <div class="form-group"><label>Ticket ID</label><input type="text" id="filter-ticket" placeholder="e.g. 1234567" oninput="applyFilters()"></div>
-        <div class="form-group"><label>Date Range (from)</label><input type="date" id="filter-from"></div>
-        <div class="form-group"><label>Date Range (to)</label><input type="date" id="filter-to"></div>
-        <div class="form-group">
-          <label>Main Reason</label>
-          <select id="filter-reason">
-            <option value="">All Reasons</option>
-            <option>Agent - Related</option>
-            <option>Customer Expectations</option>
-            <option>Process - Related</option>
-            <option>System - Related</option>
-            <option>Product - Related</option>
-          </select>
-        </div>
-        <div class="form-group"><label>Supervisor</label><select id="filter-supervisor"><option value="">All Supervisors</option></select></div>
-        <div class="form-group">
-          <label>Feedback Status</label>
-          <select id="filter-feedback">
-            <option value="">All Statuses</option>
-            <option>Pending</option>
-            <option>Feedback Delivered</option>
-            <option>Disputed</option>
-          </select>
-        </div>
-        <div class="form-group"><label>Week</label><select id="filter-week"><option value="">All Weeks</option></select></div>
-        <div class="form-group"><label>Month</label><select id="filter-month"><option value="">All Months</option></select></div>
-        <div class="form-group"><label>Channel</label><select id="filter-channel"><option value="">All Channels</option></select></div>
-        <div class="form-group"><label>Store</label><select id="filter-store"><option value="">All Stores</option></select></div>
-        <div class="form-group"><label>Lifespan Segment</label><select id="filter-lifespan"><option value="">All Segments</option></select></div>
-        <div class="form-group"><label>LTR</label><select id="filter-ltr"><option value="">All LTR</option></select></div>
-        <div class="form-group"><label>Contact Reason</label><select id="filter-contact-reason"><option value="">All Reasons</option></select></div>
-        <div class="form-group"><label>Submitted By</label><select id="filter-submitter" onchange="applyFilters()"><option value="">All Submitters</option></select></div>
-        <div class="filter-actions">
-          <button class="btn btn-primary btn-sm" onclick="applyFilters()">Apply</button>
-          <button class="btn btn-warning btn-sm" onclick="clearFilters()">↺ Reset Filters</button>
-        </div>
-      </div>
-      <div class="table-wrap"><table id="records-table">
-        <thead><tr>
-          <th>Ticket / Actions</th><th>DSAT Date</th><th>Week</th><th>Specialist</th><th>Supervisor</th>
-          <th>Main Reason</th><th>Sub-Reason</th><th>Channel</th><th>Store</th><th>LTR</th>
-          <th>Lifespan Segment</th><th>Contact Reason</th><th>Customer Email</th>
-          <th>Preventable</th><th>Resolved</th><th>Feedback</th><th>Submitted By</th>
-        </tr></thead>
-        <tbody id="records-tbody"></tbody>
-      </table></div>
+    <!-- Grouped by supervisor view -->
+    <div id="records-grouped-content"></div>
+    <!-- Hidden elements kept for JS compatibility (filters used by exportCSV) -->
+    <div style="display:none">
+      <input type="text" id="filter-ticket">
+      <input type="date" id="filter-from">
+      <input type="date" id="filter-to">
+      <select id="filter-reason"><option value="">All Reasons</option><option>Agent - Related</option><option>Customer Expectations</option><option>Process - Related</option><option>System - Related</option><option>Product - Related</option></select>
+      <select id="filter-supervisor"><option value="">All Supervisors</option></select>
+      <select id="filter-feedback"><option value="">All Statuses</option><option>Pending</option><option>Feedback Delivered</option><option>Disputed</option></select>
+      <select id="filter-week"><option value="">All Weeks</option></select>
+      <select id="filter-month"><option value="">All Months</option></select>
+      <select id="filter-channel"><option value="">All Channels</option></select>
+      <select id="filter-store"><option value="">All Stores</option></select>
+      <select id="filter-lifespan"><option value="">All Segments</option></select>
+      <select id="filter-ltr"><option value="">All LTR</option></select>
+      <select id="filter-contact-reason"><option value="">All Reasons</option></select>
+      <select id="filter-submitter"><option value="">All Submitters</option></select>
+      <table id="records-table"><tbody id="records-tbody"></tbody></table>
     </div>
   </div><!-- /page-records -->
 
@@ -1863,13 +1833,8 @@ function navTo(page) {
     if (_df && !_df.value) _df.value = new Date().toISOString().slice(0,10);
   }
   else if (page==='records') {
-    renderRecords(cachedData);
-    // Analysts automatically see only their own submissions (they can clear the filter)
-    if (cachedRole === 'analyst') {
-      const _u = getUser();
-      const _se = document.getElementById('filter-submitter');
-      if (_se && !_se.value && _u?.email) { _se.value = _u.email; renderRecords(cachedData); }
-    }
+    _populateRecMonthFilter();
+    renderRecordsGrouped();
   }
   else if (page==='queue')       renderQueue(cachedData);
   else if (page==='analytics')   { buildAnalyticsFilters(); renderAnalytics(); }
@@ -2795,27 +2760,30 @@ function clearDashFilters() {
   applyDashFilters();
 }
 
-// ══ RECORDS VIEW TOGGLE ═══════════════════════════════════════════════════════
-let _recordsView = 'table'; // 'table' | 'grouped'
+// ══ RECORDS GROUPED VIEW ══════════════════════════════════════════════════════
 
-function setRecordsView(v) {
-  _recordsView = v;
-  document.getElementById('rec-view-table').classList.toggle('active', v==='table');
-  document.getElementById('rec-view-grouped').classList.toggle('active', v==='grouped');
-  document.getElementById('records-grouped-view').style.display   = v==='grouped' ? '' : 'none';
-  document.querySelector('.card .filters-row')?.closest('.card')  // hide filter card in grouped
-  const filterCard = document.getElementById('records-filter-card');
-  if (filterCard) filterCard.style.display = v==='table' ? '' : 'none';
-  const tableWrap = document.querySelector('#page-records .card .table-wrap');
-  if (tableWrap) tableWrap.closest('.card').style.display = v==='table' ? '' : 'none';
-  if (v === 'grouped') renderRecordsGrouped();
-  else renderRecords(cachedData);
+function _populateRecMonthFilter() {
+  const sel = document.getElementById('rec-month-filter');
+  if (!sel || !cachedData.length) return;
+  const months = [...new Set(cachedData.map(r => (r.dsatDate||r.submittedAt||'').slice(0,7)).filter(Boolean))].sort().reverse();
+  const currentMonth = new Date().toISOString().slice(0,7);
+  const current = sel.value;
+  sel.innerHTML = '<option value="">All Time</option>' +
+    months.map(m => {
+      const d = new Date(m+'-02');
+      const label = d.toLocaleString('en-US',{month:'long',year:'numeric'});
+      return `<option value="${m}"${m===currentMonth&&!current?'selected':''}>${label}</option>`;
+    }).join('');
+  if (!current) sel.value = currentMonth;
 }
 
 function renderRecordsGrouped() {
-  const currentMonth = new Date().toISOString().slice(0,7);
-  const rows = cachedData.filter(r => (r.dsatDate||r.submittedAt||'').slice(0,7) === currentMonth);
-  const el   = document.getElementById('records-grouped-content');
+  const sel   = document.getElementById('rec-month-filter');
+  const month = sel ? sel.value : new Date().toISOString().slice(0,7);
+  const rows  = month
+    ? cachedData.filter(r => (r.dsatDate||r.submittedAt||'').slice(0,7) === month)
+    : [...cachedData];
+  const el    = document.getElementById('records-grouped-content');
   if (!el) return;
 
   if (!rows.length) {
@@ -2833,13 +2801,14 @@ function renderRecordsGrouped() {
     bySupMap[sup][agent].push(r);
   });
 
-  const d = new Date(currentMonth+'-01');
-  const monthLabel = d.toLocaleString('en-US',{month:'long',year:'numeric'});
+  const monthLabel = month ? new Date(month+'-02').toLocaleString('en-US',{month:'long',year:'numeric'}) : 'All Time';
   const REASON_COLOR = {'Agent - Related':'#4F46E5','Customer Expectations':'#F59E0B','Process - Related':'#10B981','System - Related':'#0EA5E9','Product - Related':'#EF4444'};
 
-  let html = `<div style="font-size:.82rem;color:#64748B;margin-bottom:.75rem;font-weight:500">
-    📅 ${monthLabel} · ${rows.length} record${rows.length!==1?'s':''} · ${Object.keys(bySupMap).length} supervisors
-  </div>`;
+  // Update subtitle
+  const countLabel = document.getElementById('records-count-label');
+  if (countLabel) countLabel.textContent = `${rows.length} record${rows.length!==1?'s':''} · ${Object.keys(bySupMap).length} supervisor${Object.keys(bySupMap).length!==1?'s':''} · ${monthLabel}`;
+
+  let html = '';
 
   Object.entries(bySupMap).sort(([a],[b])=>a.localeCompare(b)).forEach(([sup, agents], si) => {
     const supTotal = Object.values(agents).reduce((t,a)=>t+a.length,0);
@@ -3633,7 +3602,7 @@ async function saveEditRecord() {
     const _eu = getUser();
     const _eri = cachedData.findIndex(r => String(r.id) === String(record.id));
     if (_eri >= 0) cachedData[_eri] = normalizeRow({...cachedData[_eri], ...record, editedFlag:'TRUE', lastEditedByName:_eu?.name||'', lastEditedByEmail:_eu?.email||'', lastEditedAt:new Date().toISOString()});
-    renderRecords(cachedData);
+    if (currentPage==='records') renderRecordsGrouped();
   } catch(err) { showToast('❌ '+err.message,'#EF4444'); }
 }
 
@@ -4438,7 +4407,7 @@ async function applyReattribute() {
 
     // Refresh cached data so records table and dashboards reflect the fix
     await apiFetch();
-    if (currentPage === 'records')    renderRecords(cachedData);
+    if (currentPage === 'records')    renderRecordsGrouped();
     else if (currentPage === 'queue') renderQueue(cachedData);
 
   } catch(err) {
@@ -5205,7 +5174,7 @@ async function initApp() {
     cachedData = d;
     if (isModalOpen()) return;
     if (currentPage==='dashboard')   applyDashFilters();
-    else if (currentPage==='records') renderRecords(d);
+    else if (currentPage==='records') renderRecordsGrouped();
     else if (currentPage==='queue')   renderQueue(d);
     updateRoleUI();
   }, 300000);
