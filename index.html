@@ -3337,6 +3337,36 @@ function renderSupervisors() {
       </tr>`;
   });
 
+  // ── Totals row ─────────────────────────────────────────────────────────────
+  const totalMainCnts  = mainKeys.map(k => data.filter(r=>r.mainReason===k).length);
+  const prevTotalMain  = mainKeys.map(k => prevData ? prevData.filter(r=>r.mainReason===k).length : null);
+  const totalMomArrow  = (() => {
+    const d = hasPrev ? _momPct(total, prevTotal||null) : null;
+    if (d===null) return '';
+    return d>0 ? `<span style="color:#EF4444;font-size:.68rem;margin-left:.2rem">↑${Math.abs(d)}%</span>`
+               : `<span style="color:#10B981;font-size:.68rem;margin-left:.2rem">↓${Math.abs(d)}%</span>`;
+  })();
+
+  html += `
+    <tr style="background:#F1F5F9;font-weight:700;border-top:2px solid #E2E8F0">
+      <td style="padding:.65rem .75rem;color:#1E293B;font-size:.85rem">📊 Total</td>
+      <td style="text-align:center;padding:.65rem .4rem;font-size:.88rem">${total}${totalMomArrow}</td>
+      <td style="text-align:center;padding:.65rem .4rem;color:#94A3B8;font-size:.78rem">${hasPrev?(prevTotal||'0'):'—'}</td>
+      <td style="text-align:center;padding:.65rem .4rem;border-right:1px solid #E2E8F0">
+        <span style="background:#4F46E5;color:#fff;padding:.2rem .6rem;border-radius:99px;font-size:.75rem;font-weight:700">100%</span>
+      </td>
+      ${totalMainCnts.map((c,i)=>{
+        const pct  = total ? Math.round(c/total*100) : 0;
+        const col  = MAIN_REASON_COLORS[mainKeys[i]]||'#374151';
+        return `<td style="text-align:center;padding:.65rem .4rem;color:${col};font-weight:700;font-size:.85rem">${c}</td>
+                <td style="text-align:center;padding:.65rem .4rem;border-right:1px dashed #E2E8F0">
+                  <span style="background:${col}18;color:${col};padding:.15rem .45rem;border-radius:99px;font-size:.72rem;font-weight:700">${pct}%</span>
+                </td>`;
+      }).join('')}
+      <td style="padding:.65rem .4rem;font-size:.75rem;color:#94A3B8;font-style:italic">—</td>
+      <td></td>
+    </tr>`;
+
   html += '</tbody></table></div>';
   breakdown.innerHTML = html;
 }
