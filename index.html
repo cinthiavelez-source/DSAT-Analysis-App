@@ -2810,7 +2810,11 @@ function renderRecordsGrouped() {
 
   let html = '';
 
-  Object.entries(bySupMap).sort(([a],[b])=>a.localeCompare(b)).forEach(([sup, agents], si) => {
+  Object.entries(bySupMap).sort(([,a],[,b])=>{
+    const ta = Object.values(a).reduce((t,r)=>t+r.length,0);
+    const tb = Object.values(b).reduce((t,r)=>t+r.length,0);
+    return tb - ta;
+  }).forEach(([sup, agents], si) => {
     const supTotal = Object.values(agents).reduce((t,a)=>t+a.length,0);
     const agentCount = Object.keys(agents).length;
     html += `
