@@ -13,44 +13,125 @@
 body{font-family:'Segoe UI',system-ui,sans-serif;background:#F1F5F9;color:#1E293B;min-height:100vh}
 a{color:#4F46E5}
 
-/* ── LAYOUT ── */
-.navbar{background:linear-gradient(135deg,#4F46E5 0%,#7C3AED 100%);padding:0 1.5rem;display:flex;align-items:center;justify-content:space-between;min-height:60px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(79,70,229,.3)}
-.navbar-brand{display:flex;align-items:center;gap:.75rem;color:#fff;font-weight:700;font-size:1.1rem;text-decoration:none}
-.navbar-brand .logo{width:32px;height:32px;background:rgba(255,255,255,.2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.1rem}
-.nav-links{display:flex;gap:.25rem;align-items:center}
-.nav-btn{background:none;border:none;color:rgba(255,255,255,.8);padding:.5rem .9rem;border-radius:.5rem;cursor:pointer;font-size:.875rem;font-weight:500;transition:all .15s;display:flex;align-items:center;gap:.4rem;white-space:nowrap}
-.nav-btn:hover{background:rgba(255,255,255,.15);color:#fff}
-.nav-btn.active{background:rgba(255,255,255,.2);color:#fff;font-weight:600}
-.nav-user{display:flex;align-items:center;gap:.75rem}
-.user-pill{background:rgba(255,255,255,.15);border-radius:2rem;padding:.35rem .9rem;color:#fff;font-size:.8rem;display:flex;align-items:center;gap:.5rem}
-.role-badge{padding:.15rem .5rem;border-radius:99px;font-size:.7rem;font-weight:700;text-transform:uppercase}
+/* ── SIDEBAR LAYOUT ── */
+.navbar{
+  position:fixed;left:0;top:0;bottom:0;width:240px;
+  background:linear-gradient(180deg,#3730A3 0%,#4F46E5 60%,#6D28D9 100%);
+  display:flex;flex-direction:column;z-index:100;
+  box-shadow:2px 0 16px rgba(55,48,163,.25);
+  overflow-y:auto;overflow-x:hidden;
+  transition:transform .25s cubic-bezier(.4,0,.2,1);
+}
+.navbar-brand{
+  display:flex;align-items:center;gap:.75rem;color:#fff;
+  font-weight:800;font-size:1rem;padding:1.25rem 1.25rem 1rem;
+  border-bottom:1px solid rgba(255,255,255,.12);letter-spacing:-.01em;
+}
+.navbar-brand .logo{
+  width:34px;height:34px;background:rgba(255,255,255,.2);border-radius:9px;
+  display:flex;align-items:center;justify-content:center;font-size:1.1rem;
+  flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.2);
+}
+.nav-section-label{
+  font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;
+  color:rgba(255,255,255,.4);padding:.9rem 1.25rem .3rem;
+}
+.nav-links{display:flex;flex-direction:column;flex:1;padding:.5rem .75rem}
+.nav-btn{
+  background:none;border:none;color:rgba(255,255,255,.75);
+  padding:.6rem .85rem;border-radius:.6rem;cursor:pointer;
+  font-size:.845rem;font-weight:500;transition:all .15s;
+  display:flex;align-items:center;gap:.65rem;
+  width:100%;text-align:left;white-space:nowrap;margin:.1rem 0;
+  position:relative;
+}
+.nav-btn:hover{background:rgba(255,255,255,.12);color:#fff}
+.nav-btn.active{
+  background:rgba(255,255,255,.18);color:#fff;font-weight:700;
+  box-shadow:inset 3px 0 0 #FDE68A;
+}
+.nav-btn .nav-icon{font-size:1rem;width:20px;text-align:center;flex-shrink:0}
+.nav-user{
+  padding:1rem;border-top:1px solid rgba(255,255,255,.12);
+  display:flex;flex-direction:column;gap:.6rem;
+}
+.user-pill{
+  background:rgba(255,255,255,.1);border-radius:.6rem;
+  padding:.55rem .85rem;color:#fff;font-size:.8rem;
+  display:flex;align-items:center;gap:.5rem;
+}
+.user-pill .user-avatar{
+  width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,.25);
+  display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:700;
+  flex-shrink:0;
+}
+.role-badge{padding:.2rem .6rem;border-radius:99px;font-size:.68rem;font-weight:700;text-transform:uppercase;margin-left:auto;flex-shrink:0}
 .role-admin{background:#FDE68A;color:#92400E}
 .role-supervisor{background:#BAE6FD;color:#0C4A6E}
 .role-analyst{background:#BBF7D0;color:#14532D}
 .role-viewer{background:#E2E8F0;color:#475569}
-.btn-logout{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:.5rem;padding:.4rem .8rem;cursor:pointer;font-size:.8rem;transition:all .15s}
-.btn-logout:hover{background:rgba(255,255,255,.2)}
+.btn-logout{
+  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);
+  color:rgba(255,255,255,.75);border-radius:.5rem;padding:.5rem .85rem;
+  cursor:pointer;font-size:.8rem;transition:all .15s;
+  display:flex;align-items:center;gap:.5rem;width:100%;
+}
+.btn-logout:hover{background:rgba(255,255,255,.15);color:#fff}
+/* Hamburger toggle (mobile only) */
+.sidebar-toggle{
+  display:none;position:fixed;top:.9rem;left:.9rem;z-index:200;
+  background:#4F46E5;color:#fff;border:none;border-radius:.5rem;
+  width:38px;height:38px;font-size:1.1rem;cursor:pointer;
+  box-shadow:0 2px 8px rgba(79,70,229,.4);align-items:center;justify-content:center;
+}
+.sidebar-overlay{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:99;
+}
+.sidebar-overlay.show{display:block}
 
-.main{padding:1.5rem;max-width:1400px;margin:0 auto}
+.main{
+  padding:1.5rem 2rem;max-width:1400px;margin-left:240px;
+  min-height:100vh;transition:margin-left .25s;
+}
 .page{display:none}
 .page.active{display:block}
 
+/* ── PAGE TRANSITIONS ── */
+.page{display:none;animation:pageFadeIn .2s ease}
+.page.active{display:block}
+@keyframes pageFadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
 /* ── CARDS ── */
-.card{background:#fff;border-radius:1rem;padding:1.5rem;box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:1.5rem}
+.card{background:#fff;border-radius:1rem;padding:1.5rem;box-shadow:0 1px 3px rgba(0,0,0,.05),0 4px 16px rgba(0,0,0,.04);margin-bottom:1.5rem;border:1px solid rgba(226,232,240,.6)}
 .card-title{font-size:1rem;font-weight:700;color:#1E293B;margin-bottom:1rem;display:flex;align-items:center;gap:.5rem}
-.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1rem;margin-bottom:1.5rem}
-.stat-card{background:#fff;border-radius:.75rem;padding:1.25rem;box-shadow:0 1px 4px rgba(0,0,0,.06);border-left:4px solid transparent;transition:transform .15s}
-.stat-card:hover{transform:translateY(-1px)}
-.stat-card.indigo{border-color:#4F46E5}.stat-card.purple{border-color:#7C3AED}
-.stat-card.green{border-color:#10B981}.stat-card.amber{border-color:#F59E0B}
-.stat-card.red{border-color:#EF4444}.stat-card.sky{border-color:#0EA5E9}
-.stat-label{font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#64748B;margin-bottom:.4rem}
-.stat-value{font-size:2rem;font-weight:800;color:#1E293B;line-height:1}
-.stat-sub{font-size:.75rem;color:#94A3B8;margin-top:.3rem}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin-bottom:1.5rem}
+.stat-card{
+  background:#fff;border-radius:.875rem;padding:1.25rem 1.35rem;
+  box-shadow:0 1px 3px rgba(0,0,0,.05),0 4px 16px rgba(0,0,0,.04);
+  border:1px solid rgba(226,232,240,.6);
+  border-top:3px solid transparent;
+  transition:transform .15s,box-shadow .15s;
+  position:relative;overflow:hidden;
+}
+.stat-card:hover{transform:translateY(-2px);box-shadow:0 4px 20px rgba(0,0,0,.1)}
+.stat-card::after{content:'';position:absolute;right:-10px;top:-10px;width:70px;height:70px;border-radius:50%;opacity:.06}
+.stat-card.indigo{border-top-color:#4F46E5}.stat-card.indigo::after{background:#4F46E5}
+.stat-card.purple{border-top-color:#7C3AED}.stat-card.purple::after{background:#7C3AED}
+.stat-card.green{border-top-color:#10B981}.stat-card.green::after{background:#10B981}
+.stat-card.amber{border-top-color:#F59E0B}.stat-card.amber::after{background:#F59E0B}
+.stat-card.red{border-top-color:#EF4444}.stat-card.red::after{background:#EF4444}
+.stat-card.sky{border-top-color:#0EA5E9}.stat-card.sky::after{background:#0EA5E9}
+.stat-label{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#64748B;margin-bottom:.5rem}
+.stat-value{font-size:2.1rem;font-weight:800;color:#0F172A;line-height:1;letter-spacing:-.02em}
+.stat-sub{font-size:.73rem;color:#94A3B8;margin-top:.35rem}
 .charts-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:1.25rem;margin-bottom:1.5rem}
-.chart-card{background:#fff;border-radius:1rem;padding:1.25rem;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.chart-card{background:#fff;border-radius:1rem;padding:1.35rem;box-shadow:0 1px 3px rgba(0,0,0,.05),0 4px 16px rgba(0,0,0,.04);border:1px solid rgba(226,232,240,.6)}
 .chart-title{font-size:.875rem;font-weight:700;color:#1E293B;margin-bottom:1rem}
 .chart-wrap{position:relative;height:260px}
+
+/* ── SKELETON LOADING ── */
+.skeleton{background:linear-gradient(90deg,#F1F5F9 25%,#E2E8F0 50%,#F1F5F9 75%);background-size:200% 100%;animation:shimmer 1.5s infinite;border-radius:.5rem}
+@keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 
 /* ── FORMS ── */
 .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.25rem}
@@ -89,12 +170,6 @@ select option:disabled{color:#94A3B8}
 .btn-sm{padding:.4rem .8rem;font-size:.8rem}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 
-/* ── TABLES ── */
-.table-wrap{overflow-x:auto;border-radius:.75rem}
-table{width:100%;border-collapse:collapse;font-size:.85rem}
-th{background:#F8FAFC;font-weight:700;color:#374151;padding:.75rem 1rem;text-align:left;border-bottom:2px solid #E2E8F0;white-space:nowrap;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em}
-td{padding:.7rem 1rem;border-bottom:1px solid #F1F5F9;color:#374151;vertical-align:middle}
-tr:hover td{background:#FAFAFA}
 .tr-edited td:first-child{border-left:3px solid #F59E0B}
 
 /* ── BADGES ── */
@@ -228,11 +303,32 @@ tr:hover td{background:#FAFAFA}
 .guide-section-body .step-num{background:#4F46E5;color:#fff;border-radius:50%;width:22px;height:22px;font-size:.72rem;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:.1rem}
 .guide-tag{display:inline-block;padding:.15rem .55rem;border-radius:99px;font-size:.72rem;font-weight:700;margin:.1rem}
 
+/* ── TABLES POLISH ── */
+.table-wrap{overflow-x:auto;border-radius:.75rem;border:1px solid #E2E8F0}
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th{background:#F8FAFC;font-weight:700;color:#374151;padding:.75rem 1rem;text-align:left;border-bottom:2px solid #E2E8F0;white-space:nowrap;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;position:sticky;top:0;z-index:1}
+td{padding:.7rem 1rem;border-bottom:1px solid #F1F5F9;color:#374151;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#FAFBFF}
+.tr-edited td:first-child{border-left:3px solid #F59E0B}
+
+/* ── SCROLL-TO-TOP ── */
+.scroll-top-btn{
+  position:fixed;bottom:1.5rem;right:1.5rem;width:40px;height:40px;
+  background:#4F46E5;color:#fff;border:none;border-radius:50%;cursor:pointer;
+  font-size:1.1rem;box-shadow:0 2px 10px rgba(79,70,229,.4);
+  display:none;align-items:center;justify-content:center;
+  transition:all .2s;z-index:50;
+}
+.scroll-top-btn.show{display:flex}
+.scroll-top-btn:hover{background:#4338CA;transform:translateY(-2px)}
+
 /* ── RESPONSIVE ── */
-@media(max-width:768px){
-  .navbar{padding:0 1rem;min-height:56px}
-  .nav-links .nav-btn span.nav-label{display:none}
-  .main{padding:1rem}
+@media(max-width:900px){
+  .navbar{transform:translateX(-240px)}
+  .navbar.open{transform:translateX(0)}
+  .sidebar-toggle{display:flex}
+  .main{margin-left:0;padding:1rem;padding-top:3.5rem}
   .stat-value{font-size:1.6rem}
   .charts-grid{grid-template-columns:1fr}
   .form-grid{grid-template-columns:1fr}
@@ -266,50 +362,70 @@ tr:hover td{background:#FAFAFA}
   </div>
 </div>
 
-<!-- ══ NAVBAR ══════════════════════════════════════════════════════════════════ -->
+<!-- ══ SIDEBAR TOGGLE (mobile) ══════════════════════════════════════════════════ -->
+<button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" aria-label="Menu">☰</button>
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+<!-- ══ SIDEBAR NAV ══════════════════════════════════════════════════════════════ -->
 <nav class="navbar" id="navbar" style="display:none">
   <div class="navbar-brand">
     <div class="logo">📊</div>
     <span>DSAT Tracker</span>
   </div>
+
   <div class="nav-links" id="nav-links">
-    <button class="nav-btn active" data-page="dashboard" onclick="navTo('dashboard')">
-      <span>🏠</span><span class="nav-label">Dashboard</span>
+    <div class="nav-section-label">Workspace</div>
+    <button class="nav-btn active" data-page="dashboard" onclick="navTo('dashboard');closeSidebar()">
+      <span class="nav-icon">🏠</span><span class="nav-label">Dashboard</span>
     </button>
-    <button class="nav-btn" data-page="submit" onclick="navTo('submit')" id="nav-submit" style="display:none">
-      <span>➕</span><span class="nav-label">New DSAT</span>
+    <button class="nav-btn" data-page="submit" onclick="navTo('submit');closeSidebar()" id="nav-submit" style="display:none">
+      <span class="nav-icon">➕</span><span class="nav-label">New DSAT</span>
     </button>
-    <button class="nav-btn" data-page="records" onclick="navTo('records')">
-      <span>📋</span><span class="nav-label">Records</span>
+    <button class="nav-btn" data-page="records" onclick="navTo('records');closeSidebar()">
+      <span class="nav-icon">📋</span><span class="nav-label">Records</span>
     </button>
-    <button class="nav-btn" data-page="queue" onclick="navTo('queue')" id="nav-queue" style="display:none">
-      <span>🔔</span><span class="nav-label">Feedback Queue</span>
+    <button class="nav-btn" data-page="queue" onclick="navTo('queue');closeSidebar()" id="nav-queue" style="display:none">
+      <span class="nav-icon">🔔</span><span class="nav-label">Feedback Queue</span>
       <span class="notif-dot" id="queue-badge" style="display:none">0</span>
     </button>
-    <button class="nav-btn" data-page="analytics" onclick="navTo('analytics')" id="nav-analytics">
-      <span>📈</span><span class="nav-label">Analytics</span>
+
+    <div class="nav-section-label">Analytics</div>
+    <button class="nav-btn" data-page="analytics" onclick="navTo('analytics');closeSidebar()" id="nav-analytics">
+      <span class="nav-icon">📈</span><span class="nav-label">Analytics</span>
     </button>
-    <button class="nav-btn" data-page="supervisors" onclick="navTo('supervisors')" id="nav-supervisors" style="display:none">
-      <span>👥</span><span class="nav-label">Supervisors</span>
+    <button class="nav-btn" data-page="supervisors" onclick="navTo('supervisors');closeSidebar()" id="nav-supervisors" style="display:none">
+      <span class="nav-icon">👥</span><span class="nav-label">Supervisors</span>
     </button>
-    <button class="nav-btn" data-page="disputes" onclick="navTo('disputes')" id="nav-disputes" style="display:none">
-      <span>🚩</span><span class="nav-label">Disputes</span>
+    <button class="nav-btn" data-page="disputes" onclick="navTo('disputes');closeSidebar()" id="nav-disputes" style="display:none">
+      <span class="nav-icon">🚩</span><span class="nav-label">Disputes</span>
     </button>
-    <button class="nav-btn" data-page="corrections" onclick="navTo('corrections')" id="nav-corrections" style="display:none">
-      <span>✏️</span><span class="nav-label">Corrections</span>
+    <button class="nav-btn" data-page="corrections" onclick="navTo('corrections');closeSidebar()" id="nav-corrections" style="display:none">
+      <span class="nav-icon">✏️</span><span class="nav-label">Corrections</span>
     </button>
-    <button class="nav-btn" data-page="admin" onclick="navTo('admin')" id="nav-admin" style="display:none">
-      <span>⚙️</span><span class="nav-label">Admin</span>
+
+    <div class="nav-section-label">Settings</div>
+    <button class="nav-btn" data-page="guide" onclick="navTo('guide');closeSidebar()" id="nav-guide">
+      <span class="nav-icon">📖</span><span class="nav-label">Guide</span>
     </button>
-  </div>
+    <button class="nav-btn" data-page="admin" onclick="navTo('admin');closeSidebar()" id="nav-admin" style="display:none">
+      <span class="nav-icon">⚙️</span><span class="nav-label">Admin</span>
+    </button>
+  </div><!-- /nav-links -->
+
   <div class="nav-user">
     <div class="user-pill" id="user-pill">
-      <span id="user-name-nav">—</span>
+      <div class="user-avatar" id="user-avatar-nav">?</div>
+      <span id="user-name-nav" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;font-size:.8rem">—</span>
       <span class="role-badge role-viewer" id="role-badge">viewer</span>
     </div>
-    <button class="btn-logout" onclick="logout()">Sign out</button>
+    <button class="btn-logout" onclick="logout()">
+      <span>↩</span> Sign out
+    </button>
   </div>
 </nav>
+
+<!-- Scroll-to-top button -->
+<button class="scroll-top-btn" id="scroll-top-btn" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">↑</button>
 
 <!-- ══ MAIN CONTENT ════════════════════════════════════════════════════════════ -->
 <div class="main" id="main-content" style="display:none">
@@ -1366,6 +1482,37 @@ const SLA_DAYS            = 15;
 const DATA_CACHE_KEY = 'dsat_data_v2';
 const DATA_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
+// ── SIDEBAR HELPERS ──────────────────────────────────────────────────────────
+function toggleSidebar() {
+  const nav = document.getElementById('navbar');
+  const ov  = document.getElementById('sidebar-overlay');
+  if (!nav) return;
+  const open = nav.classList.toggle('open');
+  if (ov) ov.classList.toggle('show', open);
+}
+function closeSidebar() {
+  const nav = document.getElementById('navbar');
+  const ov  = document.getElementById('sidebar-overlay');
+  if (nav) nav.classList.remove('open');
+  if (ov)  ov.classList.remove('show');
+}
+
+// ── DEBOUNCE ─────────────────────────────────────────────────────────────────
+// Usage: input.addEventListener('input', debounce(() => render(), 250))
+function debounce(fn, delay = 250) {
+  let t;
+  return function(...args) {
+    clearTimeout(t);
+    t = setTimeout(() => fn.apply(this, args), delay);
+  };
+}
+
+// ── SCROLL-TO-TOP VISIBILITY ─────────────────────────────────────────────────
+window.addEventListener('scroll', () => {
+  const btn = document.getElementById('scroll-top-btn');
+  if (btn) btn.classList.toggle('show', window.scrollY > 300);
+}, { passive: true });
+
 function loadDataCache() {
   try {
     const raw = localStorage.getItem(DATA_CACHE_KEY);
@@ -1479,6 +1626,9 @@ function handleGoogleCredential(response) {
     document.getElementById('navbar').style.display = 'flex';
     document.getElementById('main-content').style.display = 'block';
     document.getElementById('login-error').style.display = 'none';
+    // Show mobile toggle after login
+    const st = document.getElementById('sidebar-toggle');
+    if (st) st.style.display = '';
     initApp();
   } catch(err) {
     showLoginError('Sign-in failed. Please try again.');
@@ -1631,6 +1781,8 @@ function navTo(page) {
   document.querySelectorAll('.nav-btn[data-page]').forEach(b =>
     b.classList.toggle('active', b.dataset.page===page)
   );
+  // Scroll to top on page change
+  window.scrollTo({ top: 0, behavior: 'smooth' });
   if (page==='dashboard')    renderDashboard(cachedData);
   else if (page==='submit') {
     // Default today's date on every visit if field is blank
@@ -1659,7 +1811,9 @@ function navTo(page) {
 function updateRoleUI() {
   const u = getUser();
   if (!u) return;
-  document.getElementById('user-name-nav').textContent = u.name;
+  document.getElementById('user-name-nav').textContent = u.name.split(' ')[0]; // first name only in sidebar
+  const av = document.getElementById('user-avatar-nav');
+  if (av) av.textContent = (u.name||'?').charAt(0).toUpperCase();
   const rb = document.getElementById('role-badge');
   rb.textContent = cachedRole;
   rb.className = 'role-badge role-'+cachedRole;
@@ -4652,7 +4806,18 @@ function clearDisputeFilters() {
 // ══ BOOT ══════════════════════════════════════════════════════════════════════
 async function initApp() {
   const u = getUser();
-  document.getElementById('user-name-nav').textContent = u?.name||'—';
+  const firstName = (u?.name||'—').split(' ')[0];
+  document.getElementById('user-name-nav').textContent = firstName;
+  const av = document.getElementById('user-avatar-nav');
+  if (av) av.textContent = firstName.charAt(0).toUpperCase();
+
+  // Wire debounce to all free-text filter inputs (reduces re-renders while typing)
+  const debouncedApplyFilters = debounce(() => applyFilters(), 280);
+  const ticketInput = document.getElementById('filter-ticket');
+  if (ticketInput) {
+    ticketInput.removeAttribute('oninput');
+    ticketInput.addEventListener('input', debouncedApplyFilters);
+  }
   document.getElementById('f-analysis-date').value = new Date().toISOString().slice(0,10);
   analyticsMonth = new Date().toISOString().slice(0,7);
   const mEl = document.getElementById('analytics-month');
@@ -4678,12 +4843,15 @@ async function initApp() {
     // First visit (no cache yet) — show the UI immediately with a loading
     // indicator inside the dashboard, then populate once data arrives.
     // The user never stares at a blank screen regardless of server speed.
+    // Skeleton placeholders for stat cards
     document.getElementById('dash-stats').innerHTML =
-      `<div style="grid-column:1/-1;padding:2rem;text-align:center;color:#64748B">
-         <div style="font-size:2rem;margin-bottom:.5rem">⏳</div>
-         <div style="font-weight:600">Loading data…</div>
-         <div style="font-size:.8rem;margin-top:.25rem">This may take up to 30 seconds on first load — subsequent visits will be instant.</div>
-       </div>`;
+      Array(6).fill(0).map(() =>
+        `<div class="stat-card indigo" style="pointer-events:none">
+           <div class="skeleton" style="height:.65rem;width:50%;margin-bottom:.75rem"></div>
+           <div class="skeleton" style="height:2rem;width:60%"></div>
+           <div class="skeleton" style="height:.55rem;width:40%;margin-top:.5rem"></div>
+         </div>`
+      ).join('');
     apiFetch(true)   // silent — no full-page overlay
       .then(d => {
         cachedData = d;
