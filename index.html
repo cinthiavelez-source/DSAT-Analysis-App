@@ -1527,7 +1527,7 @@ const ALLOWED_DOMAIN      = 'cookunity.com';
 const SLA_DAYS            = 15;
 
 // ─── LOCAL DATA CACHE (instant re-load on return visits) ─────────────────────
-const DATA_CACHE_KEY = 'dsat_data_v2';
+const DATA_CACHE_KEY = 'dsat_data_v3'; // bumped — forces fresh fetch to pick up agentAckToken/agentAckAt columns
 const DATA_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
 // ── SIDEBAR HELPERS ──────────────────────────────────────────────────────────
