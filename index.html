@@ -378,13 +378,13 @@ tr:hover td{background:#FAFBFF}
 
   <div class="nav-links" id="nav-links">
     <div class="nav-section-label">Workspace</div>
-    <button class="nav-btn active" data-page="dashboard" onclick="navTo('dashboard');closeSidebar()">
+    <button class="nav-btn active" id="nav-dashboard" data-page="dashboard" onclick="navTo('dashboard');closeSidebar()">
       <span class="nav-icon">🏠</span><span class="nav-label">Dashboard</span>
     </button>
     <button class="nav-btn" data-page="submit" onclick="navTo('submit');closeSidebar()" id="nav-submit" style="display:none">
       <span class="nav-icon">➕</span><span class="nav-label">New DSAT</span>
     </button>
-    <button class="nav-btn" data-page="records" onclick="navTo('records');closeSidebar()">
+    <button class="nav-btn" id="nav-records" data-page="records" onclick="navTo('records');closeSidebar()">
       <span class="nav-icon">📋</span><span class="nav-label">Records</span>
     </button>
     <button class="nav-btn" data-page="queue" onclick="navTo('queue');closeSidebar()" id="nav-queue" style="display:none">
@@ -401,6 +401,9 @@ tr:hover td{background:#FAFBFF}
     </button>
     <button class="nav-btn" data-page="disputes" onclick="navTo('disputes');closeSidebar()" id="nav-disputes" style="display:none">
       <span class="nav-icon">🚩</span><span class="nav-label">Disputes</span>
+    </button>
+    <button class="nav-btn" data-page="agents" onclick="navTo('agents');closeSidebar()" id="nav-agents" style="display:none">
+      <span class="nav-icon">🧑‍💼</span><span class="nav-label">Agents</span>
     </button>
     <button class="nav-btn" data-page="corrections" onclick="navTo('corrections');closeSidebar()" id="nav-corrections" style="display:none">
       <span class="nav-icon">✏️</span><span class="nav-label">Corrections</span>
@@ -1304,6 +1307,60 @@ tr:hover td{background:#FAFBFF}
     </div>
   </div>
 
+  <!-- ── AGENTS PERFORMANCE ──────────────────────────────────────────────────── -->
+  <div class="page" id="page-agents">
+    <div class="page-header">
+      <div>
+        <div class="page-title">🧑‍💼 Agents Performance</div>
+        <div class="page-sub" id="agents-page-sub">DSAT breakdown by agent — current month</div>
+      </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="card" style="padding:1rem 1.5rem;margin-bottom:1.25rem">
+      <div style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end">
+        <div class="form-group" style="min-width:170px;margin:0">
+          <label style="font-size:.75rem;font-weight:700;color:#4F46E5">📅 Month</label>
+          <select id="agents-filter-month" onchange="renderAgents()" style="font-weight:600;color:#1E293B">
+            <option value="">All Time</option>
+          </select>
+        </div>
+        <div class="form-group" style="min-width:170px;margin:0">
+          <label style="font-size:.75rem">Supervisor</label>
+          <select id="agents-filter-supervisor" onchange="renderAgents()"><option value="">All Supervisors</option></select>
+        </div>
+        <div class="form-group" style="min-width:150px;margin:0">
+          <label style="font-size:.75rem">Main Reason</label>
+          <select id="agents-filter-reason" onchange="renderAgents()">
+            <option value="">All Reasons</option>
+            <option>Agent - Related</option>
+            <option>Customer Expectations</option>
+            <option>Process - Related</option>
+            <option>System - Related</option>
+            <option>Product - Related</option>
+          </select>
+        </div>
+        <div class="form-group" style="min-width:150px;margin:0">
+          <label style="font-size:.75rem">Channel</label>
+          <select id="agents-filter-channel" onchange="renderAgents()"><option value="">All Channels</option></select>
+        </div>
+        <button class="btn btn-warning btn-sm" onclick="clearAgentsFilters()">↺ Reset</button>
+      </div>
+    </div>
+
+    <!-- KPI Stats -->
+    <div class="stats-grid" id="agents-stats"></div>
+
+    <!-- Full-width breakdown table -->
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem">
+        <div class="card-title" style="margin:0">🧑‍💼 Breakdown by Agent</div>
+        <span id="agents-breakdown-period" style="font-size:.78rem;color:#64748B;background:#F1F5F9;padding:.25rem .75rem;border-radius:99px"></span>
+      </div>
+      <div id="agents-breakdown"></div>
+    </div>
+  </div>
+
   <div class="page" id="page-corrections">
     <div class="page-header">
       <div>
@@ -1838,6 +1895,7 @@ function navTo(page) {
   else if (page==='analytics')   { buildAnalyticsFilters(); renderAnalytics(); }
   else if (page==='supervisors') { buildSupervisorFilter(); _populateSupMonthFilter(); renderSupervisors(); }
   else if (page==='disputes')    renderDisputes();
+  else if (page==='agents')      { _buildAgentsFilters(); renderAgents(); }
   else if (page==='corrections') renderCorrections();
   else if (page==='guide')       renderGuide();
   else if (page==='admin')       { switchAdminTab('roles'); loadRoles(); renderHierarchyTable(); }
@@ -1852,11 +1910,15 @@ function updateRoleUI() {
   if (av) av.textContent = (u.name||'?').charAt(0).toUpperCase();
   const rb  = document.getElementById('role-badge');
   const eff = _effectiveRole();
+  const isViewer = eff === 'viewer';
+  document.getElementById('nav-dashboard').style.display   = !isViewer ? '' : 'none';
+  document.getElementById('nav-records').style.display     = !isViewer ? '' : 'none';
   document.getElementById('nav-submit').style.display      = canSubmit() ? '' : 'none';
   document.getElementById('nav-queue').style.display       = (eff==='supervisor' || isAdmin()) ? '' : 'none';
   document.getElementById('nav-disputes').style.display    = isAdmin() ? '' : 'none';
   document.getElementById('nav-corrections').style.display = (isAdmin() || eff==='analyst') ? '' : 'none';
   document.getElementById('nav-supervisors').style.display = (isAdmin() || eff==='supervisor' || eff==='analyst') ? '' : 'none';
+  document.getElementById('nav-agents').style.display      = (isAdmin() || eff==='supervisor' || eff==='analyst' || isViewer) ? '' : 'none';
   document.getElementById('nav-admin').style.display       = isAdmin() ? '' : 'none';
 
   // View-As section — only real admins see it
@@ -4969,6 +5031,255 @@ function toggleGuideSection(idx) {
   chevron.classList.toggle('open', !isOpen);
 }
 
+// ══ AGENTS PERFORMANCE ════════════════════════════════════════════════════════
+
+function _buildAgentsFilters() {
+  // Month picker
+  const monthSel = document.getElementById('agents-filter-month');
+  if (monthSel) {
+    const months = [...new Set(cachedData.map(r=>(r.dsatDate||r.submittedAt||'').slice(0,7)).filter(Boolean))].sort().reverse();
+    const currentMonth = new Date().toISOString().slice(0,7);
+    const prev = monthSel.value;
+    monthSel.innerHTML = '<option value="">All Time</option>' +
+      months.map(m => {
+        const d = new Date(m+'-02');
+        return `<option value="${m}"${m===(prev||currentMonth)?'selected':''}>${d.toLocaleString('en-US',{month:'long',year:'numeric'})}</option>`;
+      }).join('');
+    if (!prev) monthSel.value = currentMonth;
+  }
+  // Supervisor
+  const supSel = document.getElementById('agents-filter-supervisor');
+  if (supSel) {
+    const prev = supSel.value;
+    const sups = [...new Set(cachedData.map(r=>r.supervisorName).filter(Boolean))].sort();
+    supSel.innerHTML = '<option value="">All Supervisors</option>' +
+      sups.map(s=>`<option${s===prev?' selected':''}>${escHtml(s)}</option>`).join('');
+  }
+  // Channel
+  const chSel = document.getElementById('agents-filter-channel');
+  if (chSel) {
+    const prev = chSel.value;
+    const chs = [...new Set(cachedData.map(r=>r.channel).filter(Boolean))].sort();
+    chSel.innerHTML = '<option value="">All Channels</option>' +
+      chs.map(c=>`<option${c===prev?' selected':''}>${escHtml(c)}</option>`).join('');
+  }
+}
+
+function _isAgentViewer() {
+  // Returns the agent's own email if they are a viewer (agent role), null otherwise
+  const eff = _effectiveRole();
+  if (eff !== 'viewer') return null;
+  return getUser()?.email?.toLowerCase() || null;
+}
+
+function _getAgentsBaseData() {
+  const v = id => document.getElementById(id)?.value || '';
+  const month      = v('agents-filter-month');
+  const sup        = v('agents-filter-supervisor');
+  const reason     = v('agents-filter-reason');
+  const ch         = v('agents-filter-channel');
+  const agentEmail = _isAgentViewer();
+  let data = [...cachedData];
+  if (month)      data = data.filter(r => (r.dsatDate||r.submittedAt||'').slice(0,7) === month);
+  if (agentEmail) data = data.filter(r => (r.specialistEmail||'').toLowerCase() === agentEmail);
+  if (sup)        data = data.filter(r => r.supervisorName === sup);
+  if (reason)     data = data.filter(r => r.mainReason     === reason);
+  if (ch)         data = data.filter(r => r.channel        === ch);
+  return data;
+}
+
+function _getAgentsPrevData() {
+  const month = document.getElementById('agents-filter-month')?.value;
+  if (!month) return null;
+  const prev = _prevMonthStr(month);
+  if (!prev) return null;
+  const v          = id => document.getElementById(id)?.value || '';
+  const sup        = v('agents-filter-supervisor');
+  const ch         = v('agents-filter-channel');
+  const agentEmail = _isAgentViewer();
+  let data = [...cachedData].filter(r => (r.dsatDate||r.submittedAt||'').slice(0,7) === prev);
+  if (agentEmail) data = data.filter(r => (r.specialistEmail||'').toLowerCase() === agentEmail);
+  if (sup)        data = data.filter(r => r.supervisorName === sup);
+  if (ch)         data = data.filter(r => r.channel        === ch);
+  return data;
+}
+
+function clearAgentsFilters() {
+  ['agents-filter-supervisor','agents-filter-reason','agents-filter-channel'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  const ms = document.getElementById('agents-filter-month');
+  if (ms) ms.value = new Date().toISOString().slice(0,7);
+  renderAgents();
+}
+
+function renderAgents() {
+  _buildAgentsFilters();
+  const agentEmail = _isAgentViewer();
+  const isViewerAgent = !!agentEmail;
+
+  // Hide supervisor filter for viewers (they can't switch agents)
+  const supFilterEl = document.getElementById('agents-filter-supervisor')?.closest('.form-group');
+  if (supFilterEl) supFilterEl.style.display = isViewerAgent ? 'none' : '';
+
+  const data     = _getAgentsBaseData();
+  const prevData = _getAgentsPrevData();
+  const total    = data.length;
+  const prevTotal= prevData ? prevData.length : null;
+  const month    = document.getElementById('agents-filter-month')?.value;
+  const monthLabel = month ? new Date(month+'-02').toLocaleString('en-US',{month:'long',year:'numeric'}) : 'All Time';
+
+  // Update subtitles
+  const u = getUser();
+  const subEl = document.getElementById('agents-page-sub');
+  if (subEl) subEl.textContent = isViewerAgent
+    ? `Your DSAT results — ${monthLabel}`
+    : `DSAT breakdown by agent — ${monthLabel}`;
+  const bpEl = document.getElementById('agents-breakdown-period');
+  if (bpEl) bpEl.textContent = monthLabel;
+
+  // ── KPI Stats ────────────────────────────────────────────────────────────
+  const agents      = [...new Set(data.map(r=>r.specialistName).filter(Boolean))];
+  const agentRel    = data.filter(r=>r.mainReason==='Agent - Related').length;
+  const prevAgentRel= prevData ? prevData.filter(r=>r.mainReason==='Agent - Related').length : null;
+  const missingAck  = data.filter(r=>r.feedbackStatus==='Feedback Delivered' && !r.agentAckAt).length;
+  const agentCounts = {};
+  data.forEach(r=>{ if(r.specialistName) agentCounts[r.specialistName]=(agentCounts[r.specialistName]||0)+1; });
+  const topAgent = Object.entries(agentCounts).sort((a,b)=>b[1]-a[1])[0];
+
+  document.getElementById('agents-stats').innerHTML = `
+    <div class="stat-card indigo"><div class="stat-label">Agents</div><div class="stat-value">${agents.length}</div><div class="stat-sub">With DSATs in view</div></div>
+    <div class="stat-card purple"><div class="stat-label">Total DSATs</div><div class="stat-value">${total}${_momBadge(total,prevTotal,true)}</div><div class="stat-sub">vs prev month</div></div>
+    <div class="stat-card amber"><div class="stat-label">Agent-Related</div><div class="stat-value">${agentRel}${_momBadge(agentRel,prevAgentRel,true)}</div><div class="stat-sub">${total?Math.round(agentRel/total*100):0}% of total</div></div>
+    <div class="stat-card red"><div class="stat-label">Feedback Ack Missing</div><div class="stat-value">${missingAck}</div><div class="stat-sub">Delivered but not ack'd</div></div>`;
+
+  // ── Breakdown Table ───────────────────────────────────────────────────────
+  const breakdown = document.getElementById('agents-breakdown');
+  if (!breakdown) return;
+  if (!agents.length) {
+    breakdown.innerHTML = '<div class="empty-state"><div class="icon">🧑‍💼</div><p>No agent data for selected filters.</p></div>';
+    return;
+  }
+
+  const mainKeys = Object.keys(SUB_REASONS);
+  const hasPrev  = !!prevData;
+
+  // Build prev-month agentCounts
+  const prevAgentCounts = {};
+  if (prevData) prevData.forEach(r=>{ if(r.specialistName) prevAgentCounts[r.specialistName]=(prevAgentCounts[r.specialistName]||0)+1; });
+
+  // Build total for each main reason category
+  const totalMainCnts = mainKeys.map(k=>data.filter(r=>r.mainReason===k).length);
+  const prevTotalMain = mainKeys.map(k=>prevData?prevData.filter(r=>r.mainReason===k).length:null);
+
+  let html = `
+    <div style="overflow-x:auto">
+    <table style="width:100%;font-size:.8rem;border-collapse:collapse;min-width:800px">
+      <thead>
+        <tr style="background:#F8FAFC">
+          <th style="padding:.5rem .75rem;text-align:left;border-bottom:2px solid #E2E8F0;min-width:160px" rowspan="2">Agent</th>
+          <th style="padding:.5rem .4rem;text-align:center;border-bottom:1px solid #E2E8F0;border-right:1px solid #E2E8F0" colspan="3">Volume</th>
+          ${mainKeys.map(k=>`<th style="padding:.5rem .4rem;text-align:center;border-bottom:1px solid #E2E8F0;border-right:1px dashed #E2E8F0;color:${MAIN_REASON_COLORS[k]||'#64748B'};font-size:.72rem" colspan="2">${k.replace(' - Related','').replace(' Expectations','')}</th>`).join('')}
+          <th style="padding:.5rem .4rem;text-align:center;border-bottom:1px solid #E2E8F0;border-right:1px solid #E2E8F0;color:#F59E0B;font-size:.72rem" rowspan="2">⏳ Ack<br>Missing</th>
+          <th style="padding:.5rem .4rem;text-align:left;border-bottom:1px solid #E2E8F0;font-size:.72rem;color:#64748B" rowspan="2">Top Sub-Reason</th>
+        </tr>
+        <tr style="background:#F8FAFC">
+          <th style="padding:.3rem .4rem;text-align:center;font-size:.68rem;color:#64748B;border-bottom:2px solid #E2E8F0">This</th>
+          <th style="padding:.3rem .4rem;text-align:center;font-size:.68rem;color:#94A3B8;border-bottom:2px solid #E2E8F0">Prev</th>
+          <th style="padding:.3rem .4rem;text-align:center;font-size:.68rem;color:#64748B;border-bottom:2px solid #E2E8F0;border-right:1px solid #E2E8F0">Share</th>
+          ${mainKeys.map(()=>`<th style="padding:.3rem .4rem;text-align:center;font-size:.68rem;color:#64748B;border-bottom:2px solid #E2E8F0">#</th><th style="padding:.3rem .4rem;text-align:center;font-size:.68rem;color:#94A3B8;border-bottom:2px solid #E2E8F0;border-right:1px dashed #E2E8F0">%cat</th>`).join('')}
+        </tr>
+      </thead>
+      <tbody>`;
+
+  const agentList = Object.entries(agentCounts).sort((a,b)=>b[1]-a[1]);
+
+  agentList.forEach(([agentName, cnt], idx) => {
+    const agentData  = data.filter(r=>r.specialistName===agentName);
+    const prevCnt    = prevAgentCounts[agentName] || 0;
+    const share      = total ? Math.round(cnt/total*100) : 0;
+    const momDelta   = hasPrev ? _momPct(cnt, prevCnt||null) : null;
+    const momArrow   = momDelta===null ? '' : momDelta>0
+      ? `<span style="color:#EF4444;font-size:.68rem;margin-left:.2rem">↑${Math.abs(momDelta)}%</span>`
+      : `<span style="color:#10B981;font-size:.68rem;margin-left:.2rem">↓${Math.abs(momDelta)}%</span>`;
+
+    const mainCnts   = mainKeys.map(k=>agentData.filter(r=>r.mainReason===k).length);
+    // % of that reason's total across all agents (category share)
+    const catShares  = mainCnts.map((c,i)=>totalMainCnts[i]?Math.round(c/totalMainCnts[i]*100):0);
+
+    // Missing ack for this agent
+    const ackMissing = agentData.filter(r=>r.feedbackStatus==='Feedback Delivered' && !r.agentAckAt).length;
+
+    // top sub-reason
+    const subMap = {};
+    agentData.forEach(r=>{ if(r.subReason) subMap[r.subReason]=(subMap[r.subReason]||0)+1; });
+    const topSub = Object.entries(subMap).sort((a,b)=>b[1]-a[1])[0];
+
+    // Supervisor info
+    const supName = agentData[0]?.supervisorName || '—';
+
+    html += `
+      <tr style="border-bottom:1px solid #F1F5F9">
+        <td style="padding:.6rem .75rem">
+          <div style="font-weight:600;color:#1E293B;font-size:.85rem">${escHtml(agentName)}</div>
+          <div style="font-size:.72rem;color:#94A3B8;margin-top:.1rem">👤 ${escHtml(supName)}</div>
+        </td>
+        <td style="text-align:center;padding:.6rem .4rem;font-weight:700">${cnt}${momArrow}</td>
+        <td style="text-align:center;padding:.6rem .4rem;color:#94A3B8;font-size:.78rem">${hasPrev?(prevCnt||'0'):'—'}</td>
+        <td style="text-align:center;padding:.6rem .4rem;border-right:1px solid #F1F5F9">
+          <span style="background:#EEF2FF;color:#4F46E5;padding:.15rem .5rem;border-radius:99px;font-size:.75rem;font-weight:700">${share}%</span>
+        </td>
+        ${mainCnts.map((c,i)=>`
+          <td style="text-align:center;padding:.6rem .4rem;color:${c>0?MAIN_REASON_COLORS[mainKeys[i]]||'#374151':'#CBD5E1'};font-weight:${c>0?700:400}">${c>0?c:'—'}</td>
+          <td style="text-align:center;padding:.6rem .4rem;color:#94A3B8;font-size:.72rem;border-right:1px dashed #F1F5F9">${c>0?catShares[i]+'%':'—'}</td>`).join('')}
+        <td style="text-align:center;padding:.6rem .4rem;border-right:1px solid #F1F5F9">
+          ${ackMissing>0
+            ? `<span style="background:#FEF3C7;color:#92400E;padding:.2rem .55rem;border-radius:99px;font-size:.75rem;font-weight:700">⏳ ${ackMissing}</span>`
+            : `<span style="color:#10B981;font-size:.75rem;font-weight:600">✓ —</span>`}
+        </td>
+        <td style="padding:.6rem .4rem;font-size:.78rem;color:#64748B;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(topSub?.[0]||'')}">
+          ${topSub ? escHtml(topSub[0])+` <span style="color:#94A3B8">(${topSub[1]})</span>` : '—'}
+        </td>
+      </tr>`;
+  });
+
+  // ── Totals row ───────────────────────────────────────────────────────────
+  const totalMomArrow = (() => {
+    const d = hasPrev ? _momPct(total, prevTotal||null) : null;
+    if (d===null) return '';
+    return d>0 ? `<span style="color:#EF4444;font-size:.68rem;margin-left:.2rem">↑${Math.abs(d)}%</span>`
+               : `<span style="color:#10B981;font-size:.68rem;margin-left:.2rem">↓${Math.abs(d)}%</span>`;
+  })();
+  const totalMissing = data.filter(r=>r.feedbackStatus==='Feedback Delivered' && !r.agentAckAt).length;
+
+  html += `
+    <tr style="background:#F1F5F9;font-weight:700;border-top:2px solid #E2E8F0">
+      <td style="padding:.65rem .75rem;color:#1E293B;font-size:.85rem">📊 Total</td>
+      <td style="text-align:center;padding:.65rem .4rem;font-size:.88rem">${total}${totalMomArrow}</td>
+      <td style="text-align:center;padding:.65rem .4rem;color:#94A3B8;font-size:.78rem">${hasPrev?(prevTotal||'0'):'—'}</td>
+      <td style="text-align:center;padding:.65rem .4rem;border-right:1px solid #E2E8F0">
+        <span style="background:#4F46E5;color:#fff;padding:.2rem .6rem;border-radius:99px;font-size:.75rem;font-weight:700">100%</span>
+      </td>
+      ${totalMainCnts.map((c,i)=>{
+        const pct = total?Math.round(c/total*100):0;
+        const col = MAIN_REASON_COLORS[mainKeys[i]]||'#374151';
+        return `<td style="text-align:center;padding:.65rem .4rem;color:${col};font-weight:700;font-size:.85rem">${c}</td>
+                <td style="text-align:center;padding:.65rem .4rem;border-right:1px dashed #E2E8F0">
+                  <span style="background:${col}18;color:${col};padding:.15rem .45rem;border-radius:99px;font-size:.72rem;font-weight:700">${pct}%</span>
+                </td>`;
+      }).join('')}
+      <td style="text-align:center;padding:.65rem .4rem;border-right:1px solid #E2E8F0">
+        ${totalMissing>0
+          ? `<span style="background:#FEF3C7;color:#92400E;padding:.2rem .55rem;border-radius:99px;font-size:.75rem;font-weight:700">⏳ ${totalMissing}</span>`
+          : `<span style="color:#10B981;font-size:.75rem;font-weight:600">✓ All ack'd</span>`}
+      </td>
+      <td style="padding:.65rem .4rem;font-size:.75rem;color:#94A3B8;font-style:italic">—</td>
+    </tr>`;
+
+  html += '</tbody></table></div>';
+  breakdown.innerHTML = html;
+}
+
 // ══ CORRECTIONS ══════════════════════════════════════════════════════════════
 let expandedSubmitters = new Set();
 
@@ -5308,12 +5619,16 @@ async function initApp() {
     updateRoleUI();
     buildSupervisorFilter();
     populateSpecialistDropdown();
-    applyDashFilters();
+    if (cachedRole === 'viewer') { navTo('agents'); }
+    else applyDashFilters();
     // ── Step 2: refresh silently in background ────────────────────────────────
     apiFetch(true).then(d => {
       cachedData = d;
       updateRoleUI();
-      if (!isModalOpen()) applyDashFilters();
+      if (!isModalOpen()) {
+        if (cachedRole === 'viewer') { if (currentPage === 'agents') renderAgents(); }
+        else applyDashFilters();
+      }
     });
   } else {
     // First visit — show skeleton while waiting for API
@@ -5329,7 +5644,10 @@ async function initApp() {
       .then(d => {
         cachedData = d;
         updateRoleUI();
-        if (!isModalOpen()) applyDashFilters();
+        if (!isModalOpen()) {
+          if (cachedRole === 'viewer') navTo('agents');
+          else applyDashFilters();
+        }
       })
       .catch(() => {
         document.getElementById('dash-stats').innerHTML =
