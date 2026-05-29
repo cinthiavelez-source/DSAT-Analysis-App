@@ -1308,20 +1308,28 @@ tr:hover td{background:#FAFBFF}
     <div class="page-header">
       <div>
         <div class="page-title">✏️ Corrections Report</div>
-        <div class="page-sub">Admin edits to submitted DSATs — breakdown by submitter</div>
+        <div class="page-sub" id="corr-page-sub">Admin edits to submitted DSATs — current month</div>
       </div>
     </div>
 
     <!-- Filters -->
     <div class="card" style="padding:1rem 1.5rem;margin-bottom:1.25rem">
       <div style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end">
-        <div class="form-group" style="min-width:150px;margin:0">
-          <label style="font-size:.75rem">From Date</label>
-          <input type="date" id="corr-filter-from" onchange="renderCorrections()">
+        <!-- Month picker (primary) -->
+        <div class="form-group" style="min-width:170px;margin:0">
+          <label style="font-size:.75rem;font-weight:700;color:#4F46E5">📅 Month</label>
+          <select id="corr-filter-month" onchange="renderCorrections()" style="font-weight:600;color:#1E293B">
+            <option value="">All Time</option>
+          </select>
         </div>
-        <div class="form-group" style="min-width:150px;margin:0">
+        <!-- Custom date range (secondary, clears month) -->
+        <div class="form-group" style="min-width:145px;margin:0">
+          <label style="font-size:.75rem">From Date</label>
+          <input type="date" id="corr-filter-from" onchange="document.getElementById('corr-filter-month').value='';renderCorrections()">
+        </div>
+        <div class="form-group" style="min-width:145px;margin:0">
           <label style="font-size:.75rem">To Date</label>
-          <input type="date" id="corr-filter-to" onchange="renderCorrections()">
+          <input type="date" id="corr-filter-to" onchange="document.getElementById('corr-filter-month').value='';renderCorrections()">
         </div>
         <div class="form-group" style="min-width:180px;margin:0">
           <label style="font-size:.75rem">Submitter</label>
@@ -1335,35 +1343,35 @@ tr:hover td{background:#FAFBFF}
             <option value="">All Admins</option>
           </select>
         </div>
-        <button class="btn btn-warning btn-sm" onclick="clearCorrFilters()">↺ Reset Filters</button>
+        <button class="btn btn-warning btn-sm" onclick="clearCorrFilters()">↺ Reset</button>
       </div>
     </div>
 
     <!-- KPI Stats -->
     <div class="stats-grid" id="corr-stats"></div>
 
-    <!-- Chart + Table row -->
-    <div class="charts-grid" style="grid-template-columns:1fr 2fr">
-      <div class="chart-card">
-        <div class="chart-title">Top Submitters by Correction Rate</div>
-        <div class="chart-wrap"><canvas id="corr-chart"></canvas></div>
+    <!-- Full-width chart -->
+    <div class="card" style="margin-bottom:1.25rem">
+      <div class="card-title">Top Submitters by Correction Rate</div>
+      <div style="position:relative;height:340px"><canvas id="corr-chart"></canvas></div>
+    </div>
+
+    <!-- Full-width table -->
+    <div class="card">
+      <div class="card-title">📋 Breakdown by Submitter <small style="font-weight:400;color:#64748B;font-size:.8rem">— click a row to expand corrected records</small></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th style="min-width:200px">Submitter</th>
+            <th>Total Submitted</th>
+            <th>Corrected</th>
+            <th>Correction Rate</th>
+            <th>Last Corrected</th>
+          </tr></thead>
+          <tbody id="corr-tbody"></tbody>
+        </table>
       </div>
-      <div class="card" style="margin:0">
-        <div class="card-title">📋 Breakdown by Submitter <small style="font-weight:400;color:#64748B;font-size:.8rem">— click a row to expand corrected records</small></div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr>
-              <th style="min-width:200px">Submitter</th>
-              <th>Total Submitted</th>
-              <th>Corrected</th>
-              <th>Correction Rate</th>
-              <th>Last Corrected</th>
-            </tr></thead>
-            <tbody id="corr-tbody"></tbody>
-          </table>
-        </div>
-        <p style="font-size:.75rem;color:#94A3B8;margin-top:.5rem;padding:.5rem 0 0">Expanded rows show: Correction Type · Correction Notes (hover for full text) · Edited At · View</p>
-      </div>
+      <p style="font-size:.75rem;color:#94A3B8;margin-top:.5rem;padding:.5rem 0 0">Expanded rows show: Correction Type · Correction Notes (hover for full text) · Edited At · View</p>
     </div>
   </div>
 
@@ -3562,7 +3570,7 @@ function openDetail(id) {
       <div class="detail-field"><div class="df-label">Preventable?</div><div class="df-value">${yesnoBadge(r.isPreventable)}</div></div>
       <div class="detail-field"><div class="df-label">Issue Resolved?</div><div class="df-value">${yesnoBadge(r.issueResolved)}</div></div>
       <div class="detail-field"><div class="df-label">Correct Process?</div><div class="df-value">${yesnoBadge(r.correctProcessFollowed)}</div></div>
-      <div class="detail-field"><div class="df-label">Feedback Status</div><div class="df-value">${feedbackBadge(r.feedbackStatus)}</div></div>
+      <div class="detail-field"><div class="df-label">Feedback Status</div><div class="df-value">${feedbackBadge(r.feedbackStatus, r.agentAckAt)}</div></div>
       <div class="detail-field full"><div class="df-label">Supporting Details</div><div class="df-value">${escHtml(r.supportingDetails)}</div></div>
       <div class="detail-field full"><div class="df-label">Resolution Provided</div><div class="df-value">${escHtml(r.resolutionProvided)}</div></div>
       <div class="detail-field full"><div class="df-label">Improvement Opportunities & Next Steps</div><div class="df-value">${escHtml(r.improvementOpportunities)||'—'}</div></div>
@@ -3799,7 +3807,7 @@ function renderQueue(data) {
             <span onclick="openDetail('${r.id}')" style="font-weight:700;color:#4F46E5;cursor:pointer;text-decoration:underline;text-underline-offset:2px">#${escHtml(r.ticketId)}</span>
           </td>
           <td style="padding:.45rem .75rem;color:#64748B;white-space:nowrap">${fmtDate(r.dsatDate)}</td>
-          <td style="padding:.45rem .75rem">${feedbackBadge(r.feedbackStatus)}${isOD?`<span style="font-size:.68rem;font-weight:700;color:#EF4444;margin-left:.3rem">⚠ OD</span>`:''}</td>
+          <td style="padding:.45rem .75rem">${feedbackBadge(r.feedbackStatus, r.agentAckAt)}${isOD?`<span style="font-size:.68rem;font-weight:700;color:#EF4444;margin-left:.3rem">⚠ OD</span>`:''}</td>
           <td style="padding:.45rem .75rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#374151" title="${escHtml(r.subReason)}">${escHtml(r.subReason||'—')}</td>
           <td style="padding:.45rem .75rem">${yesnoBadge(r.isPreventable)}</td>
           <td style="padding:.45rem .75rem">
@@ -4796,10 +4804,20 @@ function reasonBadge(r) {
   return r ? `<span class="badge ${map[r]||'badge-na'}">${escHtml(r)}</span>` : '<span class="badge badge-na">—</span>';
 }
 
-function feedbackBadge(s) {
+function feedbackBadge(s, agentAckAt) {
   if (!s || s==='FALSE' || s==='' || s==='undefined') return '<span class="badge badge-na">N/A</span>';
   const map = {'Pending':'badge-pending','Feedback Delivered':'badge-delivered','Disputed':'badge-disputed'};
-  return `<span class="badge ${map[s]||'badge-na'}">${escHtml(s)}</span>`;
+  let badge = `<span class="badge ${map[s]||'badge-na'}">${escHtml(s)}</span>`;
+  if (s === 'Feedback Delivered') {
+    if (agentAckAt) {
+      const d = new Date(agentAckAt);
+      const label = isNaN(d) ? '' : ` ${d.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`;
+      badge += `<span style="background:#D1FAE5;color:#065F46;padding:.15rem .5rem;border-radius:99px;font-size:.68rem;font-weight:700;margin-left:.3rem">👍 Ack'd${label}</span>`;
+    } else {
+      badge += `<span style="background:#FEF3C7;color:#92400E;padding:.15rem .5rem;border-radius:99px;font-size:.68rem;font-weight:700;margin-left:.3rem">⏳ Awaiting Ack</span>`;
+    }
+  }
+  return badge;
 }
 
 function yesnoBadge(v) {
@@ -4955,7 +4973,22 @@ function toggleGuideSection(idx) {
 let expandedSubmitters = new Set();
 
 function renderCorrections() {
-  // Populate filter dropdowns on first render
+  // ── Populate month picker ─────────────────────────────────────────────────
+  const monthSel = document.getElementById('corr-filter-month');
+  if (monthSel) {
+    const months = [...new Set(cachedData.map(r=>(r.dsatDate||r.submittedAt||'').slice(0,7)).filter(Boolean))].sort().reverse();
+    const currentMonth = new Date().toISOString().slice(0,7);
+    const prevMonth = monthSel.value;
+    monthSel.innerHTML = '<option value="">All Time</option>' +
+      months.map(m => {
+        const d = new Date(m+'-02');
+        const label = d.toLocaleString('en-US',{month:'long',year:'numeric'});
+        return `<option value="${m}"${m===(prevMonth||currentMonth)?'selected':''}>${label}</option>`;
+      }).join('');
+    if (!prevMonth) monthSel.value = currentMonth;
+  }
+
+  // ── Populate submitter / editor dropdowns ─────────────────────────────────
   const submitters = [...new Set(cachedData.map(r=>r.submittedByName).filter(Boolean))].sort();
   const editors    = [...new Set(cachedData.filter(r=>r.lastEditedByName).map(r=>r.lastEditedByName).filter(Boolean))].sort();
   const subSel = document.getElementById('corr-filter-submitter');
@@ -4971,15 +5004,24 @@ function renderCorrections() {
       editors.map(e=>`<option${e===prev?' selected':''}>${escHtml(e)}</option>`).join('');
   }
 
-  // Apply filters
+  // ── Apply filters ─────────────────────────────────────────────────────────
+  const month     = document.getElementById('corr-filter-month')?.value;
   const from      = document.getElementById('corr-filter-from')?.value;
   const to        = document.getElementById('corr-filter-to')?.value;
   const submitter = document.getElementById('corr-filter-submitter')?.value;
   const editor    = document.getElementById('corr-filter-editor')?.value;
 
+  // Update subtitle
+  const subEl = document.getElementById('corr-page-sub');
+  if (subEl) {
+    const label = month ? new Date(month+'-02').toLocaleString('en-US',{month:'long',year:'numeric'}) : (from||to ? 'Custom range' : 'All Time');
+    subEl.textContent = `Admin edits to submitted DSATs — ${label}`;
+  }
+
   let base = [...cachedData];
-  if (from)      base = base.filter(r => (r.dsatDate||r.submittedAt||'') >= from);
-  if (to)        base = base.filter(r => (r.dsatDate||r.submittedAt||'') <= to);
+  if (month)     base = base.filter(r => (r.dsatDate||r.submittedAt||'').slice(0,7) === month);
+  if (!month && from) base = base.filter(r => (r.dsatDate||r.submittedAt||'') >= from);
+  if (!month && to)   base = base.filter(r => (r.dsatDate||r.submittedAt||'') <= to);
   if (submitter) base = base.filter(r => r.submittedByName === submitter);
   if (editor)    base = base.filter(r => r.lastEditedByName === editor);
 
@@ -5020,21 +5062,48 @@ function renderCorrections() {
     return rb - ra; // highest correction rate first
   });
 
-  // Chart — top 8 submitters by correction rate
-  const chartRows = rows.filter(r=>r.corrected.length>0).slice(0,8);
-  renderChart('corr-chart','bar',
-    chartRows.map(r=>r.name),
-    chartRows.map(r=>Math.round(r.corrected.length/r.total*100)),
-    chartRows.map(()=>'#F59E0B')
-  );
-  // Override chart options for horizontal bar feel
-  if (chartInstances['corr-chart']) {
-    chartInstances['corr-chart'].options.plugins.legend = { display:false };
-    chartInstances['corr-chart'].options.scales = {
-      y:{ ticks:{ font:{size:10} } },
-      x:{ title:{display:true,text:'Correction Rate (%)',font:{size:10}} }
-    };
-    chartInstances['corr-chart'].update();
+  // Chart — all submitters with corrections, full width
+  const chartRows = rows.filter(r=>r.corrected.length>0);
+  if (chartInstances['corr-chart']) { chartInstances['corr-chart'].destroy(); delete chartInstances['corr-chart']; }
+  const corrCtx = document.getElementById('corr-chart');
+  if (corrCtx && chartRows.length) {
+    const rates  = chartRows.map(r=>Math.round(r.corrected.length/r.total*100));
+    const colors = rates.map(v => v>=20 ? '#EF4444' : v>=10 ? '#F59E0B' : '#10B981');
+    chartInstances['corr-chart'] = new Chart(corrCtx, {
+      type: 'bar',
+      data: {
+        labels: chartRows.map(r=>r.name),
+        datasets: [{
+          label: 'Correction Rate %',
+          data: rates,
+          backgroundColor: colors,
+          borderRadius: 6,
+          barPercentage: 0.65
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => ` ${ctx.raw}% correction rate (${chartRows[ctx.dataIndex].corrected.length}/${chartRows[ctx.dataIndex].total})`
+            }
+          },
+          datalabels: {
+            display: true,
+            anchor: 'end', align: 'top', offset: 2,
+            color: ctx => colors[ctx.dataIndex],
+            font: { size: 10, weight: '700' },
+            formatter: (v, ctx) => `${v}%\n(${chartRows[ctx.dataIndex].corrected.length})`
+          }
+        },
+        scales: {
+          y: { beginAtZero:true, max: Math.max(...rates)+15, ticks:{ callback: v=>v+'%', font:{size:10} }, grid:{color:'#F1F5F9'} },
+          x: { ticks:{ font:{size:10}, maxRotation:30 }, grid:{display:false} }
+        }
+      }
+    });
   }
 
   // Expandable table by submitter
@@ -5086,6 +5155,9 @@ function clearCorrFilters() {
   ['corr-filter-from','corr-filter-to','corr-filter-submitter','corr-filter-editor'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
+  // Reset month picker to current month
+  const monthSel = document.getElementById('corr-filter-month');
+  if (monthSel) monthSel.value = new Date().toISOString().slice(0,7);
   expandedSubmitters.clear();
   renderCorrections();
 }
