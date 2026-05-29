@@ -1014,13 +1014,20 @@ tr:hover td{background:#FAFBFF}
     <div class="page-header">
       <div>
         <div class="page-title">👥 Supervisors Performance</div>
-        <div class="page-sub">DSAT share by supervisor — Main Reason, Sub-Reason breakdown &amp; Week-over-Week evolution</div>
+        <div class="page-sub" id="sup-page-sub">DSAT share by supervisor — current month</div>
       </div>
     </div>
 
     <!-- Filters -->
     <div class="card" style="padding:1rem 1.5rem;margin-bottom:1.25rem">
       <div style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end">
+        <!-- Month picker (prominent, first) -->
+        <div class="form-group" style="min-width:170px;margin:0">
+          <label style="font-size:.75rem;font-weight:700;color:#4F46E5">📅 Month</label>
+          <select id="sup-filter-month" onchange="renderSupervisors()" style="font-weight:600;color:#1E293B">
+            <option value="">All Time</option>
+          </select>
+        </div>
         <div class="form-group" style="min-width:170px;margin:0">
           <label style="font-size:.75rem">Supervisor</label>
           <select id="sup-filter-supervisor" onchange="renderSupervisors()"><option value="">All Supervisors</option></select>
@@ -1049,58 +1056,41 @@ tr:hover td{background:#FAFBFF}
           <label style="font-size:.75rem">Contact Reason</label>
           <select id="sup-filter-contact-reason" onchange="renderSupervisors()"><option value="">All Reasons</option></select>
         </div>
-        <button class="btn btn-warning btn-sm" onclick="clearSupFilters()">↺ Reset Filters</button>
+        <button class="btn btn-warning btn-sm" onclick="clearSupFilters()">↺ Reset</button>
       </div>
     </div>
 
     <!-- KPI cards -->
     <div class="stats-grid" id="sup-stats"></div>
 
-    <!-- Two-column layout: WoW chart + breakdown accordion -->
-    <div style="display:grid;grid-template-columns:1fr 1.2fr;gap:1.25rem;margin-bottom:1.5rem" id="sup-grid">
-
-      <!-- WoW Line chart -->
-      <div class="card" style="margin:0">
-        <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1rem;flex-wrap:wrap">
-          <div class="card-title" style="margin:0">📈 WoW Evolution</div>
-          <div>
-            <button class="an-mode-btn active" id="sup-mode-wow" onclick="setSupMode('WoW')">Week</button>
-            <button class="an-mode-btn" id="sup-mode-mom" onclick="setSupMode('MoM')">Month</button>
-          </div>
-          <div id="sup-week-nav" style="display:flex;align-items:center;gap:.4rem">
-            <button class="btn btn-secondary btn-sm" onclick="supWeekOff--;renderSupervisors()">◀</button>
-            <span id="sup-period-label" style="font-size:.8rem;color:#64748B;white-space:nowrap">Current Period</span>
-            <button class="btn btn-secondary btn-sm" onclick="supWeekOff++;renderSupervisors()">▶</button>
-          </div>
+    <!-- Full-width WoW/MoM chart -->
+    <div class="card" style="margin-bottom:1.25rem">
+      <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1rem;flex-wrap:wrap">
+        <div class="card-title" style="margin:0">📈 WoW Evolution</div>
+        <div>
+          <button class="an-mode-btn active" id="sup-mode-wow" onclick="setSupMode('WoW')">Week</button>
+          <button class="an-mode-btn" id="sup-mode-mom" onclick="setSupMode('MoM')">Month</button>
         </div>
-        <div style="position:relative;height:300px"><canvas id="chart-sup-wow"></canvas></div>
+        <div id="sup-week-nav" style="display:flex;align-items:center;gap:.4rem">
+          <button class="btn btn-secondary btn-sm" onclick="supWeekOff--;renderSupervisors()">◀</button>
+          <span id="sup-period-label" style="font-size:.8rem;color:#64748B;white-space:nowrap">Current Period</span>
+          <button class="btn btn-secondary btn-sm" onclick="supWeekOff++;renderSupervisors()">▶</button>
+        </div>
       </div>
+      <div style="position:relative;height:440px"><canvas id="chart-sup-wow"></canvas></div>
+    </div>
 
-      <!-- Breakdown accordion -->
-      <div class="card" style="margin:0;overflow-y:auto;max-height:420px">
-        <div class="card-title">🏅 Breakdown by Supervisor</div>
-        <div id="sup-breakdown"></div>
+    <!-- Full-width breakdown table with MoM -->
+    <div class="card" style="margin-bottom:1.25rem">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem">
+        <div class="card-title" style="margin:0">🏅 Breakdown by Supervisor</div>
+        <span id="sup-breakdown-period" style="font-size:.78rem;color:#64748B;background:#F1F5F9;padding:.25rem .75rem;border-radius:99px"></span>
       </div>
+      <div id="sup-breakdown"></div>
     </div>
 
     <!-- Full-width sub-reason detail -->
     <div id="sup-subreason-detail"></div>
-
-    <!-- ── WoW Feedback Queue Table ─────────────────────────────────────────── -->
-    <div class="card" style="margin-top:1.25rem">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem">
-        <div class="card-title" style="margin:0">🔔 Feedback Queue — Supervisor Tracking (WoW)</div>
-        <div style="display:flex;align-items:center;gap:.5rem">
-          <span style="font-size:.75rem;color:#64748B">Week offset:</span>
-          <button class="btn btn-secondary btn-sm" onclick="supQueueOff--;renderSupFeedbackTable()">◀</button>
-          <span id="sup-queue-period" style="font-size:.8rem;color:#64748B;white-space:nowrap;min-width:140px;text-align:center">—</span>
-          <button class="btn btn-secondary btn-sm" onclick="supQueueOff++;renderSupFeedbackTable()">▶</button>
-        </div>
-      </div>
-      <div class="table-wrap" id="sup-queue-table-wrap">
-        <div class="empty-state"><div class="icon">🔔</div><p>Loading…</p></div>
-      </div>
-    </div>
   </div>
 
   <!-- ── ANALYTICS ─────────────────────────────────────────────────────────── -->
@@ -1838,7 +1828,7 @@ function navTo(page) {
   }
   else if (page==='queue')       renderQueue(cachedData);
   else if (page==='analytics')   { buildAnalyticsFilters(); renderAnalytics(); }
-  else if (page==='supervisors') { buildSupervisorFilter(); renderSupervisors(); }
+  else if (page==='supervisors') { buildSupervisorFilter(); _populateSupMonthFilter(); renderSupervisors(); }
   else if (page==='disputes')    renderDisputes();
   else if (page==='corrections') renderCorrections();
   else if (page==='guide')       renderGuide();
@@ -3088,6 +3078,7 @@ function setSupMode(mode) {
 }
 
 function clearSupFilters() {
+  // Reset all except month (keep current month selected)
   ['sup-filter-supervisor','sup-filter-manager','sup-filter-channel','sup-filter-store',
    'sup-filter-lifespan','sup-filter-ltr','sup-filter-contact-reason'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
@@ -3095,9 +3086,51 @@ function clearSupFilters() {
   renderSupervisors();
 }
 
+function _populateSupMonthFilter() {
+  const sel = document.getElementById('sup-filter-month');
+  if (!sel || !cachedData.length) return;
+  const months = [...new Set(cachedData.map(r=>(r.dsatDate||r.submittedAt||'').slice(0,7)).filter(Boolean))].sort().reverse();
+  const currentMonth = new Date().toISOString().slice(0,7);
+  const current = sel.value;
+  sel.innerHTML = '<option value="">All Time</option>' +
+    months.map(m => {
+      const d = new Date(m+'-02');
+      const label = d.toLocaleString('en-US',{month:'long',year:'numeric'});
+      return `<option value="${m}"${m===currentMonth&&!current?'selected':''}>${label}</option>`;
+    }).join('');
+  if (!current) sel.value = currentMonth;
+}
+
 function getSupBaseData() {
   const v  = id => document.getElementById(id)?.value || '';
   let data = [...cachedData];
+  const month    = v('sup-filter-month');
+  const sup      = v('sup-filter-supervisor');
+  const mgr      = v('sup-filter-manager');
+  const channel  = v('sup-filter-channel');
+  const store    = v('sup-filter-store');
+  const lifespan = v('sup-filter-lifespan');
+  const ltr      = v('sup-filter-ltr');
+  const contRsn  = v('sup-filter-contact-reason');
+  if (month)    data = data.filter(r => (r.dsatDate||r.submittedAt||'').slice(0,7) === month);
+  if (sup)      data = data.filter(r => r.supervisorName   === sup);
+  if (mgr)      data = data.filter(r => r.managerName      === mgr);
+  if (channel)  data = data.filter(r => r.channel          === channel);
+  if (store)    data = data.filter(r => r.store            === store);
+  if (lifespan) data = data.filter(r => r.lifespanSegment  === lifespan);
+  if (ltr)      data = data.filter(r => r.ltr              === ltr);
+  if (contRsn)  data = data.filter(r => r.contactReason    === contRsn);
+  return data;
+}
+
+function _getSupPrevData() {
+  // Returns data for the month prior to the selected sup-filter-month
+  const month = document.getElementById('sup-filter-month')?.value;
+  if (!month) return null;
+  const prev = _prevMonthStr(month);
+  if (!prev) return null;
+  const v  = id => document.getElementById(id)?.value || '';
+  let data = [...cachedData].filter(r => (r.dsatDate||r.submittedAt||'').slice(0,7) === prev);
   const sup      = v('sup-filter-supervisor');
   const mgr      = v('sup-filter-manager');
   const channel  = v('sup-filter-channel');
@@ -3116,21 +3149,31 @@ function getSupBaseData() {
 }
 
 function renderSupervisors() {
-  const data = getSupBaseData();
-  const total = data.length;
+  const data     = getSupBaseData();
+  const prevData = _getSupPrevData();
+  const total    = data.length;
+  const prevTotal= prevData ? prevData.length : null;
+
+  // Update subtitle
+  const month = document.getElementById('sup-filter-month')?.value;
+  const monthLabel = month ? new Date(month+'-02').toLocaleString('en-US',{month:'long',year:'numeric'}) : 'All Time';
+  const subEl = document.getElementById('sup-page-sub');
+  if (subEl) subEl.textContent = `DSAT share by supervisor — ${monthLabel}`;
+  const bpEl = document.getElementById('sup-breakdown-period');
+  if (bpEl) bpEl.textContent = monthLabel;
 
   // ── KPI Stats ──────────────────────────────────────────────────────────────
   const supervisors  = [...new Set(data.map(r=>r.supervisorName).filter(Boolean))];
   const agentRel     = data.filter(r=>r.mainReason==='Agent - Related').length;
-  const preventable  = data.filter(r=>r.isPreventable==='YES').length;
+  const prevAgentRel = prevData ? prevData.filter(r=>r.mainReason==='Agent - Related').length : null;
   const supCounts    = {};
   data.forEach(r => { if (r.supervisorName) supCounts[r.supervisorName] = (supCounts[r.supervisorName]||0)+1; });
   const topSup       = Object.entries(supCounts).sort((a,b)=>b[1]-a[1])[0];
   const statsEl = document.getElementById('sup-stats');
   if (statsEl) statsEl.innerHTML = `
     <div class="stat-card indigo"><div class="stat-label">Supervisors</div><div class="stat-value">${supervisors.length}</div><div class="stat-sub">With DSATs in view</div></div>
-    <div class="stat-card purple"><div class="stat-label">Total DSATs</div><div class="stat-value">${total}</div><div class="stat-sub">Matching filters</div></div>
-    <div class="stat-card amber"><div class="stat-label">Agent-Related</div><div class="stat-value">${agentRel}</div><div class="stat-sub">${total?Math.round(agentRel/total*100):0}% of total</div></div>
+    <div class="stat-card purple"><div class="stat-label">Total DSATs</div><div class="stat-value">${total}${_momBadge(total,prevTotal,true)}</div><div class="stat-sub">vs prev month</div></div>
+    <div class="stat-card amber"><div class="stat-label">Agent-Related</div><div class="stat-value">${agentRel}${_momBadge(agentRel,prevAgentRel,true)}</div><div class="stat-sub">${total?Math.round(agentRel/total*100):0}% of total</div></div>
     <div class="stat-card green"><div class="stat-label">Top Supervisor</div><div class="stat-value" style="font-size:1.1rem">${topSup?escHtml(topSup[0].split(' ')[0]):'—'}</div><div class="stat-sub">${topSup?topSup[1]+' DSATs':'No data'}</div></div>`;
 
   // ── WoW / MoM Chart ────────────────────────────────────────────────────────
@@ -3209,28 +3252,50 @@ function renderSupervisors() {
     c.clearRect(0,0,wowCtx.width,wowCtx.height);
   }
 
-  // ── Breakdown Accordion ────────────────────────────────────────────────────
+  // ── Breakdown Table with MoM ──────────────────────────────────────────────
   const breakdown = document.getElementById('sup-breakdown');
   if (!breakdown) return;
   if (!supervisors.length) { breakdown.innerHTML='<div class="empty-state"><div class="icon">👥</div><p>No data for selected filters.</p></div>'; return; }
 
   const mainKeys = Object.keys(SUB_REASONS);
+  const hasPrev  = !!prevData;
+
+  // Build prev-month supCounts
+  const prevSupCounts = {};
+  if (prevData) prevData.forEach(r => { if (r.supervisorName) prevSupCounts[r.supervisorName] = (prevSupCounts[r.supervisorName]||0)+1; });
+
   let html = `
-    <table style="width:100%;font-size:.8rem;border-collapse:collapse">
-      <thead><tr style="background:#F8FAFC">
-        <th style="padding:.5rem .75rem;text-align:left;border-bottom:2px solid #E2E8F0;min-width:130px">Supervisor</th>
-        <th style="padding:.5rem .4rem;text-align:center;border-bottom:2px solid #E2E8F0">Total</th>
-        <th style="padding:.5rem .4rem;text-align:center;border-bottom:2px solid #E2E8F0">Share</th>
-        ${mainKeys.map(k=>`<th style="padding:.5rem .4rem;text-align:center;border-bottom:2px solid #E2E8F0;color:${MAIN_REASON_COLORS[k]||'#64748B'};font-size:.72rem">${k.replace(' - Related','').replace(' Expectations','')}</th>`).join('')}
-        <th style="padding:.5rem .4rem;text-align:center;border-bottom:2px solid #E2E8F0;font-size:.72rem">Top Sub-Reason</th>
-        <th style="border-bottom:2px solid #E2E8F0"></th>
-      </tr></thead><tbody>`;
+    <div style="overflow-x:auto">
+    <table style="width:100%;font-size:.8rem;border-collapse:collapse;min-width:700px">
+      <thead>
+        <tr style="background:#F8FAFC">
+          <th style="padding:.5rem .75rem;text-align:left;border-bottom:2px solid #E2E8F0;min-width:140px" rowspan="2">Supervisor</th>
+          <th style="padding:.5rem .4rem;text-align:center;border-bottom:1px solid #E2E8F0;border-right:1px solid #E2E8F0" colspan="3">Volume</th>
+          ${mainKeys.map(k=>`<th style="padding:.5rem .4rem;text-align:center;border-bottom:1px solid #E2E8F0;border-right:1px dashed #E2E8F0;color:${MAIN_REASON_COLORS[k]||'#64748B'};font-size:.72rem" colspan="2">${k.replace(' - Related','').replace(' Expectations','').replace('Product - Related','Product')}</th>`).join('')}
+          <th style="padding:.5rem .4rem;text-align:left;border-bottom:1px solid #E2E8F0;font-size:.72rem;color:#64748B" rowspan="2">Top Sub-Reason</th>
+          <th style="border-bottom:2px solid #E2E8F0;width:20px" rowspan="2"></th>
+        </tr>
+        <tr style="background:#F8FAFC">
+          <th style="padding:.3rem .4rem;text-align:center;font-size:.68rem;color:#64748B;border-bottom:2px solid #E2E8F0">This</th>
+          <th style="padding:.3rem .4rem;text-align:center;font-size:.68rem;color:#94A3B8;border-bottom:2px solid #E2E8F0">Prev</th>
+          <th style="padding:.3rem .4rem;text-align:center;font-size:.68rem;color:#64748B;border-bottom:2px solid #E2E8F0;border-right:1px solid #E2E8F0">Share</th>
+          ${mainKeys.map(()=>`<th style="padding:.3rem .4rem;text-align:center;font-size:.68rem;color:#64748B;border-bottom:2px solid #E2E8F0">#</th><th style="padding:.3rem .4rem;text-align:center;font-size:.68rem;color:#94A3B8;border-bottom:2px solid #E2E8F0;border-right:1px dashed #E2E8F0">%total</th>`).join('')}
+        </tr>
+      </thead><tbody>`;
 
   const supList = Object.entries(supCounts).sort((a,b)=>b[1]-a[1]);
   supList.forEach(([supName, cnt], idx) => {
-    const supData  = data.filter(r=>r.supervisorName===supName);
-    const share    = total ? Math.round(cnt/total*100) : 0;
-    const mainCnts = mainKeys.map(k => supData.filter(r=>r.mainReason===k).length);
+    const supData   = data.filter(r=>r.supervisorName===supName);
+    const prevCnt   = prevSupCounts[supName] || 0;
+    const share     = total ? Math.round(cnt/total*100) : 0;
+    const momDelta  = hasPrev ? _momPct(cnt, prevCnt||null) : null;
+    const momColor  = momDelta===null ? '#94A3B8' : momDelta>0 ? '#EF4444' : '#10B981';
+    const momArrow  = momDelta===null ? '' : momDelta>0 ? `<span style="color:#EF4444;font-size:.68rem;margin-left:.2rem">↑${Math.abs(momDelta)}%</span>` : `<span style="color:#10B981;font-size:.68rem;margin-left:.2rem">↓${Math.abs(momDelta)}%</span>`;
+
+    const mainCnts  = mainKeys.map(k => supData.filter(r=>r.mainReason===k).length);
+    // share of each category relative to ALL data total (cross-supervisor share)
+    const mainShares= mainCnts.map(c => total ? Math.round(c/total*100) : 0);
+
     // top sub-reason
     const subMap = {};
     supData.forEach(r => { if(r.subReason) subMap[r.subReason]=(subMap[r.subReason]||0)+1; });
@@ -3242,18 +3307,21 @@ function renderSupervisors() {
           <span id="sup-chev-${idx}" style="color:#94A3B8;margin-right:.4rem;transition:transform .2s;display:inline-block">▶</span>
           ${escHtml(supName)}
         </td>
-        <td style="text-align:center;padding:.6rem .4rem;font-weight:700">${cnt}</td>
-        <td style="text-align:center;padding:.6rem .4rem">
+        <td style="text-align:center;padding:.6rem .4rem;font-weight:700">${cnt}${momArrow}</td>
+        <td style="text-align:center;padding:.6rem .4rem;color:#94A3B8;font-size:.78rem">${hasPrev?(prevCnt||'0'):'—'}</td>
+        <td style="text-align:center;padding:.6rem .4rem;border-right:1px solid #F1F5F9">
           <span style="background:#EEF2FF;color:#4F46E5;padding:.15rem .5rem;border-radius:99px;font-size:.75rem;font-weight:700">${share}%</span>
         </td>
-        ${mainCnts.map((c,i)=>`<td style="text-align:center;padding:.6rem .4rem;color:${c>0?MAIN_REASON_COLORS[mainKeys[i]]||'#374151':'#CBD5E1'};font-weight:${c>0?700:400}">${c>0?c:'—'}</td>`).join('')}
-        <td style="padding:.6rem .4rem;font-size:.78rem;color:#64748B;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(topSub?.[0]||'')}">
+        ${mainCnts.map((c,i)=>`
+          <td style="text-align:center;padding:.6rem .4rem;color:${c>0?MAIN_REASON_COLORS[mainKeys[i]]||'#374151':'#CBD5E1'};font-weight:${c>0?700:400}">${c>0?c:'—'}</td>
+          <td style="text-align:center;padding:.6rem .4rem;color:#94A3B8;font-size:.72rem;border-right:1px dashed #F1F5F9">${c>0?mainShares[i]+'%':'—'}</td>`).join('')}
+        <td style="padding:.6rem .4rem;font-size:.78rem;color:#64748B;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(topSub?.[0]||'')}">
           ${topSub ? escHtml(topSub[0]) + ` <span style="color:#94A3B8">(${topSub[1]})</span>` : '—'}
         </td>
-        <td style="padding:.6rem .4rem"></td>
+        <td></td>
       </tr>
       <tr id="sup-detail-${idx}" style="display:none;background:#F8FAFC">
-        <td colspan="${4 + mainKeys.length}" style="padding:0 .75rem .75rem 2rem">
+        <td colspan="${5 + mainKeys.length*2}" style="padding:0 .75rem .75rem 2rem">
           <div style="padding-top:.6rem">
             <div style="font-size:.78rem;font-weight:700;color:#64748B;margin-bottom:.5rem;text-transform:uppercase;letter-spacing:.05em">Sub-Reason Breakdown</div>
             <div style="display:flex;flex-wrap:wrap;gap:.5rem">
@@ -3269,11 +3337,8 @@ function renderSupervisors() {
       </tr>`;
   });
 
-  html += '</tbody></table>';
+  html += '</tbody></table></div>';
   breakdown.innerHTML = html;
-
-  // Render the feedback queue WoW table in the section below
-  renderSupFeedbackTable();
 }
 
 // ── WoW Feedback Queue Table ───────────────────────────────────────────────────
