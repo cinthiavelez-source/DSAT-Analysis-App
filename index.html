@@ -683,8 +683,15 @@ tr:hover td{background:#FAFBFF}
         <!-- Month picker -->
         <div style="display:flex;align-items:center;gap:.5rem;background:#fff;border:1.5px solid #E2E8F0;border-radius:.5rem;padding:.35rem .75rem">
           <span style="font-size:.8rem;color:#64748B;font-weight:600;white-space:nowrap">📅 Month</span>
-          <select id="rec-month-filter" onchange="renderRecordsGrouped()" style="border:none;background:transparent;font-size:.85rem;font-weight:600;color:#1E293B;cursor:pointer;outline:none;padding:0">
+          <select id="rec-month-filter" onchange="_onRecMonthChange()" style="border:none;background:transparent;font-size:.85rem;font-weight:600;color:#1E293B;cursor:pointer;outline:none;padding:0">
             <option value="">All Time</option>
+          </select>
+        </div>
+        <!-- Week picker -->
+        <div style="display:flex;align-items:center;gap:.5rem;background:#fff;border:1.5px solid #E2E8F0;border-radius:.5rem;padding:.35rem .75rem">
+          <span style="font-size:.8rem;color:#64748B;font-weight:600;white-space:nowrap">📆 Week</span>
+          <select id="rec-week-filter" onchange="renderRecordsGrouped()" style="border:none;background:transparent;font-size:.85rem;font-weight:600;color:#1E293B;cursor:pointer;outline:none;padding:0">
+            <option value="">All Weeks</option>
           </select>
         </div>
         <button class="btn btn-secondary btn-sm" onclick="exportCSV()">⬇ Export CSV</button>
@@ -2824,6 +2831,34 @@ function clearDashFilters() {
 
 // ══ RECORDS GROUPED VIEW ══════════════════════════════════════════════════════
 
+function _getISOWeek(dateStr) {
+  // Returns 'YYYY-Www' ISO week string for a date string
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d)) return '';
+  const day = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dow = day.getUTCDay() || 7;
+  day.setUTCDate(day.getUTCDate() + 4 - dow);
+  const yearStart = new Date(Date.UTC(day.getUTCFullYear(), 0, 1));
+  const weekNum = Math.ceil((((day - yearStart) / 86400000) + 1) / 7);
+  return `${day.getUTCFullYear()}-W${String(weekNum).padStart(2,'0')}`;
+}
+
+function _weekLabel(isoWeek) {
+  // e.g. '2026-W22' → 'Week 22 (May 25 – May 31)'
+  const [year, w] = isoWeek.split('-W');
+  const simple = parseInt(w);
+  // Get Monday of that ISO week
+  const jan4 = new Date(Date.UTC(parseInt(year), 0, 4));
+  const dow = jan4.getUTCDay() || 7;
+  const monday = new Date(jan4);
+  monday.setUTCDate(jan4.getUTCDate() - dow + 1 + (simple - 1) * 7);
+  const sunday = new Date(monday);
+  sunday.setUTCDate(monday.getUTCDate() + 6);
+  const fmt = d => d.toLocaleString('en-US',{month:'short',day:'numeric'});
+  return `Week ${simple} (${fmt(monday)} – ${fmt(sunday)})`;
+}
+
 function _populateRecMonthFilter() {
   const sel = document.getElementById('rec-month-filter');
   if (!sel || !cachedData.length) return;
@@ -2837,14 +2872,33 @@ function _populateRecMonthFilter() {
       return `<option value="${m}"${m===currentMonth&&!current?'selected':''}>${label}</option>`;
     }).join('');
   if (!current) sel.value = currentMonth;
+  _populateRecWeekFilter();
+}
+
+function _onRecMonthChange() {
+  _populateRecWeekFilter();
+  renderRecordsGrouped();
+}
+
+function _populateRecWeekFilter() {
+  const monthSel = document.getElementById('rec-month-filter');
+  const weekSel  = document.getElementById('rec-week-filter');
+  if (!weekSel || !cachedData.length) return;
+  const month = monthSel ? monthSel.value : '';
+  // Get rows matching current month filter
+  const rows = month ? cachedData.filter(r => (r.dsatDate||r.submittedAt||'').slice(0,7) === month) : cachedData;
+  const weeks = [...new Set(rows.map(r => _getISOWeek(r.dsatDate||r.submittedAt)).filter(Boolean))].sort().reverse();
+  weekSel.innerHTML = '<option value="">All Weeks</option>' +
+    weeks.map(w => `<option value="${w}">${_weekLabel(w)}</option>`).join('');
 }
 
 function renderRecordsGrouped() {
-  const sel   = document.getElementById('rec-month-filter');
-  const month = sel ? sel.value : new Date().toISOString().slice(0,7);
-  const rows  = month
-    ? cachedData.filter(r => (r.dsatDate||r.submittedAt||'').slice(0,7) === month)
-    : [...cachedData];
+  const mSel  = document.getElementById('rec-month-filter');
+  const wSel  = document.getElementById('rec-week-filter');
+  const month = mSel ? mSel.value : new Date().toISOString().slice(0,7);
+  const week  = wSel ? wSel.value : '';
+  let rows = month ? cachedData.filter(r => (r.dsatDate||r.submittedAt||'').slice(0,7) === month) : [...cachedData];
+  if (week) rows = rows.filter(r => _getISOWeek(r.dsatDate||r.submittedAt) === week);
   const el    = document.getElementById('records-grouped-content');
   if (!el) return;
 
@@ -2864,11 +2918,12 @@ function renderRecordsGrouped() {
   });
 
   const monthLabel = month ? new Date(month+'-02').toLocaleString('en-US',{month:'long',year:'numeric'}) : 'All Time';
+  const periodLabel = week ? _weekLabel(week) : monthLabel;
   const REASON_COLOR = {'Agent - Related':'#4F46E5','Customer Expectations':'#F59E0B','Process - Related':'#10B981','System - Related':'#0EA5E9','Product - Related':'#EF4444'};
 
   // Update subtitle
   const countLabel = document.getElementById('records-count-label');
-  if (countLabel) countLabel.textContent = `${rows.length} record${rows.length!==1?'s':''} · ${Object.keys(bySupMap).length} supervisor${Object.keys(bySupMap).length!==1?'s':''} · ${monthLabel}`;
+  if (countLabel) countLabel.textContent = `${rows.length} record${rows.length!==1?'s':''} · ${Object.keys(bySupMap).length} supervisor${Object.keys(bySupMap).length!==1?'s':''} · ${periodLabel}`;
 
   let html = '';
 
@@ -4080,8 +4135,8 @@ function openDisputeReview(id) {
       </select>
     </div>
     <div class="form-group" style="margin-bottom:1.5rem">
-      <label>Admin Feedback / Notes (will replace supervisor feedback text)</label>
-      <textarea id="dispute-admin-feedback" placeholder="Add admin review notes…">${escHtml(r.supervisorFeedback||'')}</textarea>
+      <label>Admin Dispute Notes</label>
+      <textarea id="dispute-admin-feedback" placeholder="Add admin review notes…">${escHtml(r.disputeNotes||'')}</textarea>
     </div>
     <!-- Full record editing section -->
     <div style="border-top:2px solid #E2E8F0;padding-top:1.25rem">
@@ -4141,9 +4196,8 @@ function updateDispSubReasons() {
 async function saveDisputeReview() {
   const id        = document.getElementById('dispute-id').value;
   const newStatus = document.getElementById('dispute-new-status').value;
-  const feedback  = document.getElementById('dispute-admin-feedback').value;
+  const disputeNotes = document.getElementById('dispute-admin-feedback').value;
   const record = {
-    supervisorFeedback:       feedback,
     analysisDate:             document.getElementById('disp-analysis-date')?.value    || '',
     dsatDate:                 document.getElementById('disp-dsat-date')?.value        || '',
     ticketId:                 document.getElementById('disp-ticket-id')?.value        || '',
@@ -4162,12 +4216,12 @@ async function saveDisputeReview() {
     improvementOpportunities: document.getElementById('disp-improvement')?.value      || ''
   };
   try {
-    await apiPost({action:'disputeReview', dsatId:id, newStatus, record});
+    await apiPost({action:'disputeReview', dsatId:id, newStatus, disputeNotes, record});
     showToast('✅ Dispute resolved.');
     closeModal('detail-modal');
     // Local update — no full re-fetch needed
     const _dri = cachedData.findIndex(r => r.id === id);
-    if (_dri >= 0) cachedData[_dri] = normalizeRow({...cachedData[_dri], ...record, feedbackStatus: newStatus, disputeReviewedBy: getUser()?.email||'', disputeReviewedAt: new Date().toISOString()});
+    if (_dri >= 0) cachedData[_dri] = normalizeRow({...cachedData[_dri], ...record, disputeNotes, feedbackStatus: newStatus, disputeReviewedBy: getUser()?.email||'', disputeReviewedAt: new Date().toISOString()});
     renderQueue(cachedData);
   } catch(err) { showToast('❌ '+err.message,'#EF4444'); }
 }
