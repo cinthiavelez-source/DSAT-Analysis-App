@@ -694,6 +694,13 @@ tr:hover td{background:#FAFBFF}
             <option value="">All Weeks</option>
           </select>
         </div>
+        <!-- Reason picker -->
+        <div style="display:flex;align-items:center;gap:.5rem;background:#fff;border:1.5px solid #E2E8F0;border-radius:.5rem;padding:.35rem .75rem">
+          <span style="font-size:.8rem;color:#64748B;font-weight:600;white-space:nowrap">🏷 Reason</span>
+          <select id="rec-reason-filter" onchange="renderRecordsGrouped()" style="border:none;background:transparent;font-size:.85rem;font-weight:600;color:#1E293B;cursor:pointer;outline:none;padding:0">
+            <option value="">All Reasons</option>
+          </select>
+        </div>
         <button class="btn btn-secondary btn-sm" onclick="exportCSV()">⬇ Export CSV</button>
       </div>
     </div>
@@ -2873,10 +2880,12 @@ function _populateRecMonthFilter() {
     }).join('');
   if (!current) sel.value = currentMonth;
   _populateRecWeekFilter();
+  _populateRecReasonFilter();
 }
 
 function _onRecMonthChange() {
   _populateRecWeekFilter();
+  _populateRecReasonFilter();
   renderRecordsGrouped();
 }
 
@@ -2885,20 +2894,34 @@ function _populateRecWeekFilter() {
   const weekSel  = document.getElementById('rec-week-filter');
   if (!weekSel || !cachedData.length) return;
   const month = monthSel ? monthSel.value : '';
-  // Get rows matching current month filter
   const rows = month ? cachedData.filter(r => (r.dsatDate||r.submittedAt||'').slice(0,7) === month) : cachedData;
   const weeks = [...new Set(rows.map(r => _getISOWeek(r.dsatDate||r.submittedAt)).filter(Boolean))].sort().reverse();
   weekSel.innerHTML = '<option value="">All Weeks</option>' +
     weeks.map(w => `<option value="${w}">${_weekLabel(w)}</option>`).join('');
 }
 
+function _populateRecReasonFilter() {
+  const monthSel  = document.getElementById('rec-month-filter');
+  const reasonSel = document.getElementById('rec-reason-filter');
+  if (!reasonSel || !cachedData.length) return;
+  const month = monthSel ? monthSel.value : '';
+  const rows = month ? cachedData.filter(r => (r.dsatDate||r.submittedAt||'').slice(0,7) === month) : cachedData;
+  const reasons = [...new Set(rows.map(r => r.mainReason).filter(Boolean))].sort();
+  const current = reasonSel.value;
+  reasonSel.innerHTML = '<option value="">All Reasons</option>' +
+    reasons.map(r => `<option value="${r}"${r===current?'selected':''}>${r}</option>`).join('');
+}
+
 function renderRecordsGrouped() {
   const mSel  = document.getElementById('rec-month-filter');
   const wSel  = document.getElementById('rec-week-filter');
-  const month = mSel ? mSel.value : new Date().toISOString().slice(0,7);
-  const week  = wSel ? wSel.value : '';
+  const rSel  = document.getElementById('rec-reason-filter');
+  const month  = mSel ? mSel.value : new Date().toISOString().slice(0,7);
+  const week   = wSel ? wSel.value : '';
+  const reason = rSel ? rSel.value : '';
   let rows = month ? cachedData.filter(r => (r.dsatDate||r.submittedAt||'').slice(0,7) === month) : [...cachedData];
-  if (week) rows = rows.filter(r => _getISOWeek(r.dsatDate||r.submittedAt) === week);
+  if (week)   rows = rows.filter(r => _getISOWeek(r.dsatDate||r.submittedAt) === week);
+  if (reason) rows = rows.filter(r => r.mainReason === reason);
   const el    = document.getElementById('records-grouped-content');
   if (!el) return;
 
@@ -3929,9 +3952,15 @@ function renderQueue(data) {
           <td style="padding:.45rem .75rem">${feedbackBadge(r.feedbackStatus, r.agentAckAt)}${isOD?`<span style="font-size:.68rem;font-weight:700;color:#EF4444;margin-left:.3rem">⚠ OD</span>`:''}</td>
           <td style="padding:.45rem .75rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#374151" title="${escHtml(r.subReason)}">${escHtml(r.subReason||'—')}</td>
           <td style="padding:.45rem .75rem">${yesnoBadge(r.isPreventable)}</td>
-          <td style="padding:.45rem .75rem">
-            ${r.feedbackStatus==='Pending'&&isSupervisor()?`<button class="btn btn-success btn-sm" onclick="openFeedbackModal('${r.id}')">✍ Feedback</button>`:''}
-            ${r.feedbackStatus==='Disputed'&&isAdmin()?`<button class="btn btn-warning btn-sm" onclick="openDisputeReview('${r.id}')">🔍 Review</button>`:''}
+          <td style="padding:.45rem .75rem;white-space:nowrap">
+            ${isSupervisor()&&!isAdmin()?`
+              <button class="btn btn-success btn-sm" style="margin-right:.25rem" onclick="openFeedbackModal('${r.id}')">✍ Feedback</button>
+              ${r.feedbackStatus!=='Disputed'?`<button class="btn btn-sm" style="background:#FEF3C7;color:#92400E;border:1px solid #FDE68A" onclick="openFeedbackModalAsDispute('${r.id}')">⚠ Dispute</button>`:'<span style="font-size:.75rem;color:#92400E;font-weight:600">Disputed</span>'}
+            `:''}
+            ${isAdmin()?`
+              <button class="btn btn-success btn-sm" style="margin-right:.25rem" onclick="openFeedbackModal('${r.id}')">✍ Feedback</button>
+              ${r.feedbackStatus==='Disputed'?`<button class="btn btn-warning btn-sm" onclick="openDisputeReview('${r.id}')">🔍 Review</button>`:`<button class="btn btn-sm" style="background:#FEF3C7;color:#92400E;border:1px solid #FDE68A" onclick="openFeedbackModalAsDispute('${r.id}')">⚠ Dispute</button>`}
+            `:''}
           </td>
         </tr>`;
     }
@@ -4091,6 +4120,13 @@ function openFeedbackModal(id) {
     document.getElementById('fb-dispute-wrap').style.display = this.value==='Disputed' ? '' : 'none';
   };
   openModal('feedback-modal');
+}
+
+function openFeedbackModalAsDispute(id) {
+  openFeedbackModal(id);
+  // Pre-select "Disputed" and show the dispute notes field
+  document.getElementById('fb-status').value = 'Disputed';
+  document.getElementById('fb-dispute-wrap').style.display = '';
 }
 
 async function saveFeedback() {
