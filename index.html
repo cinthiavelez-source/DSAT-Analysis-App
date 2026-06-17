@@ -690,22 +690,28 @@ tr:hover td{background:#FAFBFF}
         <!-- Week picker -->
         <div style="display:flex;align-items:center;gap:.5rem;background:#fff;border:1.5px solid #E2E8F0;border-radius:.5rem;padding:.35rem .75rem">
           <span style="font-size:.8rem;color:#64748B;font-weight:600;white-space:nowrap">📆 Week</span>
-          <select id="rec-week-filter" onchange="renderRecordsGrouped()" style="border:none;background:transparent;font-size:.85rem;font-weight:600;color:#1E293B;cursor:pointer;outline:none;padding:0">
+          <select id="rec-week-filter" onchange="renderRecordsGrouped();if(_recView==='list')renderRecordsList()" style="border:none;background:transparent;font-size:.85rem;font-weight:600;color:#1E293B;cursor:pointer;outline:none;padding:0">
             <option value="">All Weeks</option>
           </select>
         </div>
         <!-- Reason picker -->
         <div style="display:flex;align-items:center;gap:.5rem;background:#fff;border:1.5px solid #E2E8F0;border-radius:.5rem;padding:.35rem .75rem">
           <span style="font-size:.8rem;color:#64748B;font-weight:600;white-space:nowrap">🏷 Reason</span>
-          <select id="rec-reason-filter" onchange="renderRecordsGrouped()" style="border:none;background:transparent;font-size:.85rem;font-weight:600;color:#1E293B;cursor:pointer;outline:none;padding:0">
+          <select id="rec-reason-filter" onchange="renderRecordsGrouped();if(_recView==='list')renderRecordsList()" style="border:none;background:transparent;font-size:.85rem;font-weight:600;color:#1E293B;cursor:pointer;outline:none;padding:0">
             <option value="">All Reasons</option>
           </select>
+        </div>
+        <div id="rec-view-toggle" style="display:none;gap:.25rem">
+          <button id="rec-btn-grouped" class="btn btn-primary btn-sm" onclick="setRecView('grouped')">👥 Grouped</button>
+          <button id="rec-btn-list"    class="btn btn-secondary btn-sm" onclick="setRecView('list')">☰ List</button>
         </div>
         <button class="btn btn-secondary btn-sm" onclick="exportCSV()">⬇ Export CSV</button>
       </div>
     </div>
     <!-- Grouped by supervisor view -->
     <div id="records-grouped-content"></div>
+    <!-- Flat list view (admin only) -->
+    <div id="records-list-content" style="display:none"></div>
     <!-- Hidden elements kept for JS compatibility (filters used by exportCSV) -->
     <div style="display:none">
       <input type="text" id="filter-ticket">
@@ -1850,6 +1856,8 @@ function normalizeRow(r) {
     correctionType: String(r.correctionType||''), correctionNotes: String(r.correctionNotes||''),
     agentAckToken: String(r.agentAckToken||''),
     agentAckAt:    String(r.agentAckAt||''),
+    adminReviewedBy: String(r.adminReviewedBy||''),
+    adminReviewedAt: String(r.adminReviewedAt||''),
     // Enrichment fields (from weekly CSV upload, joined by ticketId)
     channel:         String(r.channel||''),
     customerEmail:   String(r.customerEmail||''),
@@ -1904,6 +1912,9 @@ function navTo(page) {
     if (_df && !_df.value) _df.value = new Date().toISOString().slice(0,10);
   }
   else if (page==='records') {
+    // Show view toggle for admins only
+    const tog = document.getElementById('rec-view-toggle');
+    if (tog) tog.style.display = isAdmin() ? 'flex' : 'none';
     _populateRecMonthFilter();
     renderRecordsGrouped();
   }
@@ -2887,6 +2898,7 @@ function _onRecMonthChange() {
   _populateRecWeekFilter();
   _populateRecReasonFilter();
   renderRecordsGrouped();
+  if (_recView==='list') renderRecordsList();
 }
 
 function _populateRecWeekFilter() {
@@ -2910,6 +2922,95 @@ function _populateRecReasonFilter() {
   const current = reasonSel.value;
   reasonSel.innerHTML = '<option value="">All Reasons</option>' +
     reasons.map(r => `<option value="${r}"${r===current?'selected':''}>${r}</option>`).join('');
+}
+
+// ── Admin: Mark a record as reviewed ─────────────────────────────────────────
+async function markAdminReviewed(id) {
+  try {
+    const u   = getUser();
+    const now = new Date().toISOString();
+    await apiPost({ action:'adminReview', dsatId:id, reviewedBy: u?.name||u?.email||'Admin', reviewedAt: now });
+    const idx = cachedData.findIndex(r => r.id === id);
+    if (idx >= 0) {
+      cachedData[idx] = normalizeRow({ ...cachedData[idx], adminReviewedBy: u?.name||u?.email||'Admin', adminReviewedAt: now });
+    }
+    showToast('✅ Marked as reviewed.');
+    closeModal('detail-modal');
+    renderRecordsGrouped();
+    if (document.getElementById('records-list-content').style.display !== 'none') renderRecordsList();
+  } catch(e) { showToast('❌ '+e.message,'#EF4444'); }
+}
+
+// ── Records view toggle (admin only) ─────────────────────────────────────────
+let _recView = 'grouped';
+function setRecView(v) {
+  _recView = v;
+  document.getElementById('records-grouped-content').style.display = v==='grouped' ? '' : 'none';
+  document.getElementById('records-list-content').style.display    = v==='list'    ? '' : 'none';
+  document.getElementById('rec-btn-grouped').className = v==='grouped' ? 'btn btn-primary btn-sm'   : 'btn btn-secondary btn-sm';
+  document.getElementById('rec-btn-list').className    = v==='list'    ? 'btn btn-primary btn-sm'   : 'btn btn-secondary btn-sm';
+  if (v==='list') renderRecordsList();
+}
+
+// ── Flat list render (admin only) ─────────────────────────────────────────────
+function renderRecordsList() {
+  const el = document.getElementById('records-list-content');
+  if (!el) return;
+  const mSel   = document.getElementById('rec-month-filter');
+  const wSel   = document.getElementById('rec-week-filter');
+  const rSel   = document.getElementById('rec-reason-filter');
+  const month  = mSel ? mSel.value : '';
+  const week   = wSel ? wSel.value : '';
+  const reason = rSel ? rSel.value : '';
+  let rows = month ? cachedData.filter(r => (r.dsatDate||r.submittedAt||'').slice(0,7) === month) : [...cachedData];
+  if (week)   rows = rows.filter(r => _getISOWeek(r.dsatDate||r.submittedAt) === week);
+  if (reason) rows = rows.filter(r => r.mainReason === reason);
+  rows.sort((a,b) => (b.dsatDate||'').localeCompare(a.dsatDate||''));
+
+  if (!rows.length) { el.innerHTML='<div class="empty-state card"><div class="icon">📭</div><p>No records found.</p></div>'; return; }
+
+  const REASON_COLOR = {'Agent - Related':'#4F46E5','Customer Expectations':'#F59E0B','Process - Related':'#10B981','System - Related':'#0EA5E9','Product - Related':'#EF4444'};
+  el.innerHTML = `
+    <div class="card" style="overflow-x:auto;padding:0">
+      <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+        <thead>
+          <tr style="background:#F8FAFC;border-bottom:2px solid #E2E8F0;text-align:left">
+            <th style="padding:.6rem .75rem;font-size:.72rem;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap">Ticket</th>
+            <th style="padding:.6rem .75rem;font-size:.72rem;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap">DSAT Date</th>
+            <th style="padding:.6rem .75rem;font-size:.72rem;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.04em">Specialist</th>
+            <th style="padding:.6rem .75rem;font-size:.72rem;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.04em">Supervisor</th>
+            <th style="padding:.6rem .75rem;font-size:.72rem;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.04em">Main Reason</th>
+            <th style="padding:.6rem .75rem;font-size:.72rem;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.04em">Sub-Reason</th>
+            <th style="padding:.6rem .75rem;font-size:.72rem;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.04em">Preventable</th>
+            <th style="padding:.6rem .75rem;font-size:.72rem;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.04em">Feedback</th>
+            <th style="padding:.6rem .75rem;font-size:.72rem;font-weight:700;color:#64748B;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap">Admin Review</th>
+            <th style="padding:.6rem .75rem"></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r => {
+            const rc = REASON_COLOR[r.mainReason]||'#94A3B8';
+            const reviewed = !!r.adminReviewedAt;
+            return `<tr style="border-bottom:1px solid #F1F5F9;${reviewed?'opacity:.6':''}">
+              <td style="padding:.5rem .75rem;font-weight:700;color:#4F46E5;cursor:pointer;text-decoration:underline;text-underline-offset:2px" onclick="openDetail('${r.id}')">#${escHtml(r.ticketId)}</td>
+              <td style="padding:.5rem .75rem;color:#64748B;white-space:nowrap">${fmtDate(r.dsatDate)}</td>
+              <td style="padding:.5rem .75rem">${escHtml(r.specialistName||'—')}</td>
+              <td style="padding:.5rem .75rem">${escHtml(r.supervisorName||'—')}</td>
+              <td style="padding:.5rem .75rem"><span style="background:${rc}20;color:${rc};font-size:.72rem;font-weight:700;padding:.15rem .5rem;border-radius:.3rem">${escHtml(r.mainReason||'—')}</span></td>
+              <td style="padding:.5rem .75rem;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.subReason)}">${escHtml(r.subReason||'—')}</td>
+              <td style="padding:.5rem .75rem">${yesnoBadge(r.isPreventable)}</td>
+              <td style="padding:.5rem .75rem">${feedbackBadge(r.feedbackStatus, r.agentAckAt)}</td>
+              <td style="padding:.5rem .75rem">
+                ${reviewed
+                  ? `<span style="font-size:.72rem;color:#16A34A;font-weight:600">✅ ${fmtDate(r.adminReviewedAt)}</span>`
+                  : `<button class="btn btn-sm" style="background:#DCFCE7;color:#166534;border:1.5px solid #BBF7D0;font-size:.72rem;padding:.2rem .5rem;font-weight:600;white-space:nowrap" onclick="markAdminReviewed('${r.id}')">✅ Mark Reviewed</button>`}
+              </td>
+              <td style="padding:.5rem .75rem"><button class="btn btn-secondary btn-sm" style="font-size:.72rem;padding:.2rem .5rem" onclick="openDetail('${r.id}')">View</button></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`;
 }
 
 function renderRecordsGrouped() {
@@ -3755,8 +3856,15 @@ function openDetail(id) {
       </div>`:''}
     </div>`;
   const footer = document.getElementById('detail-modal-footer');
+  const alreadyReviewed = !!r.adminReviewedAt;
   footer.innerHTML = `<button class="btn btn-secondary" onclick="closeModal('detail-modal')">Close</button>
-    ${isAdmin()?`<button class="btn btn-primary" onclick="closeModal('detail-modal');openEditModal('${r.id}')">Edit Record</button>`:''}`;
+    ${isAdmin() ? `
+      ${alreadyReviewed
+        ? `<span style="font-size:.78rem;color:#16A34A;font-weight:600;display:flex;align-items:center;gap:.3rem">✅ Reviewed by ${escHtml(r.adminReviewedBy)} on ${fmtDate(r.adminReviewedAt)}</span>`
+        : `<button class="btn btn-sm" style="background:#DCFCE7;color:#166534;border:1.5px solid #BBF7D0;font-weight:600" onclick="markAdminReviewed('${r.id}')">✅ Mark as Reviewed</button>`
+      }
+      <button class="btn btn-primary" onclick="closeModal('detail-modal');openEditModal('${r.id}')">Edit Record</button>
+    ` : ''}`;
   openModal('detail-modal');
 }
 
