@@ -2040,12 +2040,22 @@ function filterSpecialists(query) {
   if (!query || query.length < 1) { dd.classList.remove('open'); return; }
   const q = query.toLowerCase();
   const pool = _buildSpecialistPool();
-  _specMatches = pool.filter(h =>
+  const allMatches = pool.filter(h =>
     h.agentName && (
       h.agentName.toLowerCase().includes(q) ||
       (h.agentEmail||'').toLowerCase().includes(q)
     )
-  ).slice(0, 40);
+  );
+  // Sort: name-starts-with query first, then name-contains, then email-only matches
+  allMatches.sort((a, b) => {
+    const an = a.agentName.toLowerCase();
+    const bn = b.agentName.toLowerCase();
+    const aStarts = an.startsWith(q) ? 0 : 1;
+    const bStarts = bn.startsWith(q) ? 0 : 1;
+    if (aStarts !== bStarts) return aStarts - bStarts;
+    return an.localeCompare(bn);
+  });
+  _specMatches = allMatches.slice(0, 80); // increased from 40 — large teams need more room
 
   if (!_specMatches.length) {
     const source = (cachedHierarchy && cachedHierarchy.length) ? '' : ' (hierarchy empty — showing from past records)';
