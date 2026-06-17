@@ -3719,6 +3719,24 @@ function openDetail(id) {
       ${r.supervisorFeedback?`<div class="detail-field full"><div class="df-label">Supervisor Feedback</div><div class="df-value">${escHtml(r.supervisorFeedback)}</div></div>`:''}
       ${r.disputeNotes?`<div class="detail-field full"><div class="df-label">Dispute Notes</div><div class="df-value" style="color:#EF4444">${escHtml(r.disputeNotes)}</div></div>`:''}
       ${edited?`<div class="detail-field full" style="background:#FEF3C7"><div class="df-label">Last Edited</div><div class="df-value">${escHtml(r.lastEditedByName)} · ${fmtDateTime(r.lastEditedAt)}</div></div>`:''}
+      ${(()=>{
+        // Show correction feedback to: admins, the submitter, the supervisor of this record
+        const u = getUser();
+        const userEmail = (u?.email||'').toLowerCase();
+        const isSubmitter  = userEmail === (r.submittedByEmail||'').toLowerCase();
+        const isSup        = userEmail === (r.supervisorEmail||'').toLowerCase();
+        const canSeeCorrFb = isAdmin() || isSubmitter || isSup;
+        if (!canSeeCorrFb || (!r.correctionType && !r.correctionNotes)) return '';
+        return `
+          <div class="detail-field full" style="background:#EFF6FF;border:1.5px solid #BFDBFE;border-radius:.5rem;padding:.75rem 1rem;margin-top:.25rem">
+            <div class="df-label" style="color:#1D4ED8;font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:.5rem">
+              ✏️ Correction Feedback
+              <span style="font-size:.68rem;font-weight:400;color:#3B82F6;margin-left:.4rem">Admin made changes to this record</span>
+            </div>
+            ${r.correctionType?`<div style="margin-bottom:.4rem"><span style="font-size:.72rem;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.04em">Type</span><br><span style="background:#DBEAFE;color:#1D4ED8;padding:.2rem .6rem;border-radius:.3rem;font-size:.8rem;font-weight:600;display:inline-block;margin-top:.2rem">${escHtml(r.correctionType)}</span></div>`:''}
+            ${r.correctionNotes?`<div><span style="font-size:.72rem;font-weight:600;color:#64748B;text-transform:uppercase;letter-spacing:.04em">Notes</span><p style="margin:.3rem 0 0;color:#1E3A5F;font-size:.85rem;line-height:1.5">${escHtml(r.correctionNotes)}</p></div>`:''}
+          </div>`;
+      })()}
       <div class="detail-field"><div class="df-label">Submitted By</div><div class="df-value">${escHtml(r.submittedByName||r.submittedByEmail)}</div></div>
       <div class="detail-field"><div class="df-label">Submitted At</div><div class="df-value">${fmtDateTime(r.submittedAt)}</div></div>
       ${(r.channel||r.store||r.ltr||r.lifespanSegment||r.contactReason||r.customerEmail)?`
