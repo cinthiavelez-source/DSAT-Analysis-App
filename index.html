@@ -2012,11 +2012,35 @@ function populateSpecialistDropdown() {
   // hierarchy is ready in cachedHierarchy — dropdown filters on keypress
 }
 
+function _buildSpecialistPool() {
+  // Primary source: hierarchy (has supervisor info)
+  if (cachedHierarchy && cachedHierarchy.length) return cachedHierarchy;
+  // Fallback: derive unique agents from submitted DSAT records
+  // Used when hierarchy sheet is empty/being rebuilt
+  const seen = {};
+  const pool = [];
+  for (const r of cachedData) {
+    const key = (r.specialistEmail||'').toLowerCase();
+    if (!key || seen[key]) continue;
+    seen[key] = true;
+    pool.push({
+      agentName:      r.specialistName  || '',
+      agentEmail:     r.specialistEmail || '',
+      supervisorName: r.supervisorName  || '',
+      supervisorEmail:r.supervisorEmail || '',
+      managerName:    r.managerName     || '',
+      role:           'agent'
+    });
+  }
+  return pool.sort((a,b) => a.agentName.localeCompare(b.agentName));
+}
+
 function filterSpecialists(query) {
   const dd = document.getElementById('specialist-dropdown');
   if (!query || query.length < 1) { dd.classList.remove('open'); return; }
   const q = query.toLowerCase();
-  _specMatches = cachedHierarchy.filter(h =>
+  const pool = _buildSpecialistPool();
+  _specMatches = pool.filter(h =>
     h.agentName && (
       h.agentName.toLowerCase().includes(q) ||
       (h.agentEmail||'').toLowerCase().includes(q)
@@ -2024,7 +2048,8 @@ function filterSpecialists(query) {
   ).slice(0, 40);
 
   if (!_specMatches.length) {
-    dd.innerHTML = '<div class="spec-option" style="color:#94A3B8;cursor:default">No agents found</div>';
+    const source = (cachedHierarchy && cachedHierarchy.length) ? '' : ' (hierarchy empty — showing from past records)';
+    dd.innerHTML = `<div class="spec-option" style="color:#94A3B8;cursor:default">No agents found${source}</div>`;
     dd.classList.add('open');
     return;
   }
@@ -4708,7 +4733,10 @@ async function importHierarchyCSV(mode) {
     if (res.skipped) parts.push(`${res.skipped} unchanged (skipped)`);
     statusDiv.textContent = `✅ Done effective ${res.effectiveFrom||effectiveFrom} — ${parts.join(', ') || 'no changes'}.`;
     showToast('✅ Hierarchy import complete!');
-    await apiFetch();   // updates cachedHierarchy, cachedHierarchyAll, populateSpecialistDropdown
+    localStorage.removeItem(DATA_CACHE_KEY); // force fresh fetch so new agents appear immediately
+    const fresh = await apiFetch(true);      // updates cachedHierarchy, populateSpecialistDropdown
+    cachedData = fresh;
+    updateRoleUI();
     renderHierarchyTable();
     _hierCsvRows = [];
     upsertBtn.disabled  = true;
