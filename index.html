@@ -1549,6 +1549,7 @@ const USER_KEY            = 'dsat_user_v1';
 const GOOGLE_CLIENT_ID    = '788780379923-grdcv6cti5m12ie40g76ceotujrv67c9.apps.googleusercontent.com';
 const ALLOWED_DOMAIN      = 'cookunity.com';
 const SLA_DAYS            = 15;
+const APP_START_MONTH     = '2026-04'; // App went live — never show months before this
 
 // ─── LOCAL DATA CACHE (instant re-load on return visits) ─────────────────────
 const DATA_CACHE_KEY = 'dsat_data_v4'; // bumped — normalizeRow now includes agentAckToken/agentAckAt
@@ -3510,19 +3511,24 @@ function renderSupervisors() {
       `${shortDate(currWB.start)} – ${shortDate(currWB.end)}`;
     document.getElementById('sup-week-nav').style.display = 'flex';
   } else {
-    // MoM: last 6 months
+    // MoM: from APP_START_MONTH up to current month (capped at 12 months)
     const baseMonth = new Date(); baseMonth.setDate(1);
-    for (let i = 5; i >= 0; i--) {
+    const months = [];
+    for (let i = 11; i >= 0; i--) {
       const d = new Date(baseMonth); d.setMonth(d.getMonth() - i + supWeekOff);
       const ym = d.toISOString().slice(0,7);
+      if (ym >= APP_START_MONTH) months.push({ ym, d });
+    }
+    months.forEach(({ ym, d }) => {
       const mb = getMonthBounds(ym);
       const mData = filterByPeriod(data, mb.start, mb.end);
       periodLabels.push(d.toLocaleString('en-US',{month:'short',year:'2-digit'}));
       supervisors.forEach(s => {
         supWeekData[s].push(mData.filter(r=>r.supervisorName===s).length);
       });
-    }
-    document.getElementById('sup-period-label').textContent = 'Last 6 months';
+    });
+    const monthCount = months.length;
+    document.getElementById('sup-period-label').textContent = monthCount > 1 ? `Last ${monthCount} months` : months[0]?.d.toLocaleString('en-US',{month:'long',year:'numeric'})||'';
     document.getElementById('sup-week-nav').style.display = 'flex';
   }
 
