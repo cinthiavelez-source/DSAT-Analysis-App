@@ -438,6 +438,10 @@ tr:hover td{background:#FAFBFF}
       <span id="user-name-nav" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;font-size:.8rem">—</span>
       <span class="role-badge role-viewer" id="role-badge">viewer</span>
     </div>
+    <button id="nav-force-refresh" onclick="forceRefreshData()" title="Clear cache and reload data from sheet — use after manual edits in Google Sheets"
+      style="display:none;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:.4rem;padding:.3rem .65rem;font-size:.75rem;font-weight:600;cursor:pointer;margin-bottom:.4rem;width:100%;text-align:left;transition:background .15s">
+      🔄 Force Refresh
+    </button>
     <button class="btn-logout" onclick="logout()">
       <span>↩</span> Sign out
     </button>
@@ -1594,6 +1598,28 @@ function saveDataCache(records, hierarchy) {
   try { localStorage.setItem(DATA_CACHE_KEY, JSON.stringify({records, hierarchy, ts: Date.now()})); }
   catch(e) {} // storage full — fail silently
 }
+// Admin: force-bust both server cache and browser cache, then reload fresh data
+async function forceRefreshData() {
+  const btn = document.getElementById('nav-force-refresh');
+  if (btn) { btn.textContent = '⏳ Refreshing…'; btn.disabled = true; }
+  try {
+    // 1. Tell the server to drop its CacheService snapshot
+    await apiPost({ action: 'clearCache' });
+    // 2. Drop the browser localStorage snapshot
+    localStorage.removeItem(DATA_CACHE_KEY);
+    // 3. Fetch fresh from sheet
+    const fresh = await apiFetch(true);
+    cachedData = fresh;
+    updateRoleUI();
+    applyDashFilters();
+    showToast('✅ Data refreshed from sheet.');
+  } catch(e) {
+    showToast('❌ Refresh failed: ' + e.message, '#EF4444');
+  } finally {
+    if (btn) { btn.textContent = '🔄 Force Refresh'; btn.disabled = false; }
+  }
+}
+
 function isModalOpen() {
   return !!document.querySelector('.modal-overlay.open');
 }
@@ -1947,6 +1973,8 @@ function updateRoleUI() {
   document.getElementById('nav-supervisors').style.display = (isAdmin() || eff==='supervisor' || eff==='analyst') ? '' : 'none';
   document.getElementById('nav-agents').style.display      = (isAdmin() || eff==='supervisor' || eff==='analyst' || isViewer) ? '' : 'none';
   document.getElementById('nav-admin').style.display       = isAdmin() ? '' : 'none';
+  const navFR = document.getElementById('nav-force-refresh');
+  if (navFR) navFR.style.display = isAdmin() ? '' : 'none';
 
   // View-As section — only real admins see it
   const vas = document.getElementById('nav-view-as-section');
