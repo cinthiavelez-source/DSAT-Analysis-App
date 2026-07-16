@@ -1612,7 +1612,13 @@ async function forceRefreshData() {
     const fresh = await apiFetch(true);
     cachedData = fresh;
     updateRoleUI();
-    applyDashFilters();
+    // Re-render whichever page is currently visible (not just dashboard)
+    if      (currentPage === 'queue')       renderQueue(cachedData);
+    else if (currentPage === 'records')     renderRecordsGrouped();
+    else if (currentPage === 'supervisors') renderSupervisors();
+    else if (currentPage === 'corrections') renderCorrections();
+    else if (currentPage === 'agents')      { _buildAgentsFilters(); renderAgents(); }
+    else                                    applyDashFilters();
     showToast('✅ Data refreshed from sheet.');
   } catch(e) {
     showToast('❌ Refresh failed: ' + e.message, '#EF4444');
@@ -3864,6 +3870,13 @@ function csvCell(v) {
 
 // ══ VIEW DETAIL ═══════════════════════════════════════════════════════════════
 function openDetail(id) {
+  // Guard: empty id means the sheet's 'id' column header was lost and all
+  // records now have id='' — clicking any ticket would show the first record.
+  // Show a diagnostic toast instead of silently opening the wrong ticket.
+  if (!id) {
+    showToast('⚠️ Record ID missing — run migrateRepairIds() in Apps Script, then Force Refresh.', '#F59E0B');
+    return;
+  }
   const r = cachedData.find(x=>x.id===id);
   if (!r) return;
   const edited = r.editedFlag==='TRUE'||r.editedFlag===true;
