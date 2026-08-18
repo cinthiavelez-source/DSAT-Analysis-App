@@ -5257,15 +5257,29 @@ async function importEnrichmentCSV() {
       status.textContent = `Uploading batch ${b + 1} of ${batches.length} (${matchedRows.length} matched rows)…`;
       status.style.color = '#64748B';
 
-      const res = await apiPost({ action: 'importEnrichment', rows: batches[b] });
+      // Apps Script's /exec URL can issue a 302 redirect which fetch follows as GET,
+      // causing doGet to run instead of doPost and returning {records:[...]} instead
+      // of {ok:true}.  Detect that pattern and retry up to 3 times with a longer gap.
+      let res;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (attempt > 0) {
+          status.textContent = `Batch ${b + 1} — retrying (attempt ${attempt + 1} of 3)…`;
+          await new Promise(r => setTimeout(r, 4000));
+        }
+        res = await apiPost({ action: 'importEnrichment', rows: batches[b] });
+        // If we got the doGet response (has records[] but no ok/error), retry
+        if (res.records && !('ok' in res) && !('error' in res)) continue;
+        break;
+      }
+
       if (!res.ok) throw new Error(
         res.error || ('Batch ' + (b + 1) + ' — server response: ' + JSON.stringify(res))
       );
       totalAdded   += res.added   || 0;
       totalUpdated += res.updated || 0;
 
-      // Brief pause between batches so Apps Script quota doesn't compound
-      if (b < batches.length - 1) await new Promise(r => setTimeout(r, 800));
+      // Longer pause between batches so Apps Script finishes writing before next batch arrives
+      if (b < batches.length - 1) await new Promise(r => setTimeout(r, 3000));
     }
 
     // ── Done ────────────────────────────────────────────────────────────────
