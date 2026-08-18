@@ -748,6 +748,12 @@ tr:hover td{background:#FAFBFF}
     <div class="card" id="queue-filter-bar" style="padding:.85rem 1.25rem;margin-bottom:1.25rem;display:none">
       <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-end">
         <div class="form-group" style="min-width:200px;margin:0">
+          <label style="font-size:.75rem">Manager</label>
+          <select id="queue-filter-manager" onchange="renderQueue(cachedData)">
+            <option value="">All Managers</option>
+          </select>
+        </div>
+        <div class="form-group" style="min-width:200px;margin:0">
           <label style="font-size:.75rem">Supervisor</label>
           <select id="queue-filter-supervisor" onchange="renderQueue(cachedData)">
             <option value="">All Supervisors</option>
@@ -1961,8 +1967,16 @@ function navTo(page) {
   if (page==='dashboard')    applyDashFilters();
   else if (page==='submit') {
     // Default today's date on every visit if field is blank
+    const _today = new Date().toISOString().slice(0,10);
+    const _yearStart = _today.slice(0,4) + '-01-01';
     const _df = document.getElementById('f-analysis-date');
-    if (_df && !_df.value) _df.value = new Date().toISOString().slice(0,10);
+    if (_df) {
+      if (!_df.value) _df.value = _today;
+      _df.min = _yearStart;
+      _df.max = _today;
+    }
+    const _dd = document.getElementById('f-dsat-date');
+    if (_dd) { _dd.min = _yearStart; _dd.max = _today; }
   }
   else if (page==='records') {
     // Show view toggle for admins only
@@ -2122,6 +2136,54 @@ function selectSpecialist(h) {
     document.getElementById('f-manager-name').classList.add('auto-filled');
   }
 }
+
+// ── Edit modal specialist search ──────────────────────────────────────────────
+let _editSpecMatches = [];
+function editSpecialistSearch(q) {
+  const dd = document.getElementById('edit-specialist-dropdown');
+  if (!dd) return;
+  if (!q || q.length < 1) { dd.style.display = 'none'; return; }
+  const ql = q.toLowerCase();
+  const pool = _buildSpecialistPool();
+  _editSpecMatches = pool.filter(h =>
+    h.agentName && (
+      h.agentName.toLowerCase().includes(ql) ||
+      (h.agentEmail||'').toLowerCase().includes(ql)
+    )
+  ).slice(0, 8);
+
+  if (!_editSpecMatches.length) { dd.style.display = 'none'; return; }
+
+  dd.innerHTML = _editSpecMatches.map((h, i) => `
+    <div data-idx="${i}" style="padding:.5rem .75rem;cursor:pointer;border-bottom:1px solid #F1F5F9;font-size:.83rem"
+      onmousedown="event.preventDefault();editSelectSpecialist(_editSpecMatches[${i}])"
+      onmouseover="this.style.background='#F1F5F9'" onmouseout="this.style.background=''">
+      <strong>${escHtml(h.agentName)}</strong>
+      ${h.agentEmail ? `<span style="color:#94A3B8;font-size:.75rem"> · ${escHtml(h.agentEmail)}</span>` : ''}
+      ${h.supervisorName ? `<div style="color:#64748B;font-size:.72rem">Sup: ${escHtml(h.supervisorName)} · Mgr: ${escHtml(h.managerName||'—')}</div>` : ''}
+    </div>`).join('');
+  dd.style.display = 'block';
+}
+
+function editSelectSpecialist(h) {
+  if (!h) return;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+  set('edit-specialist-name',  h.agentName);
+  set('edit-specialist-email', h.agentEmail || '');
+  set('edit-supervisor-name',  h.supervisorName || '');
+  set('edit-supervisor-email', h.supervisorEmail || '');
+  set('edit-manager-name',     h.managerName || '');
+  const dd = document.getElementById('edit-specialist-dropdown');
+  if (dd) dd.style.display = 'none';
+}
+
+// Close edit specialist dropdown on outside click
+document.addEventListener('click', e => {
+  const dd = document.getElementById('edit-specialist-dropdown');
+  if (dd && !dd.contains(e.target) && e.target.id !== 'edit-specialist-name') {
+    dd.style.display = 'none';
+  }
+});
 
 function openSpecialistDropdown() {
   const val = document.getElementById('f-specialist-search').value;
@@ -2391,15 +2453,32 @@ function renderAnalytics() {
 }
 
 // ── Date validation (inline feedback) ────────────────────────────────────────
+function _currentYearBounds() {
+  const today = new Date().toISOString().slice(0,10);
+  const yearStart = today.slice(0,4) + '-01-01';
+  return { today, yearStart, year: today.slice(0,4) };
+}
+
 function checkDsatDate(val) {
   const errBox = document.getElementById('dsat-date-error');
   const errMsg = document.getElementById('dsat-date-error-msg');
   if (!errBox) return true;
+  if (!val) { errBox.style.display = 'none'; return true; }
+
+  const { today, yearStart, year } = _currentYearBounds();
   const analysisDate = document.getElementById('f-analysis-date').value;
-  if (val && analysisDate && val >= analysisDate) {
+
+  if (val < yearStart) {
+    errMsg.textContent = `DSAT Date must be within ${year}. Dates from previous years are not allowed.`;
+    errBox.style.display = 'flex'; return false;
+  }
+  if (val > today) {
+    errMsg.textContent = `DSAT Date cannot be in the future.`;
+    errBox.style.display = 'flex'; return false;
+  }
+  if (analysisDate && val >= analysisDate) {
     errMsg.textContent = `DSAT Date must be before the Date of Analysis (${analysisDate}). The survey must be received before the audit is completed.`;
-    errBox.style.display = 'flex';
-    return false;
+    errBox.style.display = 'flex'; return false;
   }
   errBox.style.display = 'none';
   return true;
@@ -2408,8 +2487,19 @@ function checkDsatDate(val) {
 function checkAnalysisDate(val) {
   const warn = document.getElementById('analysis-date-warning');
   if (!warn) return;
-  const today = new Date().toISOString().slice(0,10);
-  warn.style.display = val > today ? 'flex' : 'none';
+  const { today, yearStart, year } = _currentYearBounds();
+  const analysisWarn = document.getElementById('analysis-date-warning');
+  const span = analysisWarn?.querySelector('span');
+
+  if (val > today) {
+    if (span) span.textContent = 'Date of Analysis cannot be in the future.';
+    warn.style.display = 'flex';
+  } else if (val && val < yearStart) {
+    if (span) span.textContent = `Date of Analysis must be within ${year}. Dates from previous years are not allowed.`;
+    warn.style.display = 'flex';
+  } else {
+    warn.style.display = 'none';
+  }
   const dsatVal = document.getElementById('f-dsat-date').value;
   if (dsatVal) checkDsatDate(dsatVal);
 }
@@ -2419,17 +2509,26 @@ function checkAnalysisDate(val) {
 function validateDates() {
   const analysisDate = document.getElementById('f-analysis-date').value;
   const dsatDate     = document.getElementById('f-dsat-date').value;
-  const today        = new Date().toISOString().slice(0,10);
+  const { today, yearStart, year } = _currentYearBounds();
 
-  // Scenario 4: Analysis Date is in the future
+  // Year boundary — Analysis Date
+  if (analysisDate < yearStart) {
+    document.getElementById('f-analysis-date').focus();
+    return `🚫 Date of Analysis must be within ${year}. Dates from previous years are not allowed.`;
+  }
   if (analysisDate > today) {
     document.getElementById('f-analysis-date').focus();
     return '🚫 Date of Analysis cannot be in the future.';
   }
 
-  // Scenario 2 & 3: DSAT Date is the same as or after the Analysis Date
+  // Year boundary — DSAT Date
+  if (dsatDate && dsatDate < yearStart) {
+    document.getElementById('f-dsat-date').focus();
+    return `🚫 DSAT Date must be within ${year}. Dates from previous years are not allowed.`;
+  }
+
+  // DSAT Date must be before Analysis Date
   if (dsatDate && analysisDate && dsatDate >= analysisDate) {
-    // Show inline error too
     const errBox = document.getElementById('dsat-date-error');
     const errMsg = document.getElementById('dsat-date-error-msg');
     if (errBox && errMsg) {
@@ -3985,11 +4084,16 @@ function openEditModal(id) {
       <div class="form-group"><label>Analysis Date</label><input type="date" id="edit-analysis-date" value="${escHtml(r.analysisDate)}"></div>
       <div class="form-group"><label>DSAT Date</label><input type="date" id="edit-dsat-date" value="${escHtml(r.dsatDate)}"></div>
       <div class="form-group"><label>Ticket ID</label><input id="edit-ticket-id" value="${escHtml(r.ticketId)}"></div>
-      <div class="form-group"><label>Specialist Name</label><input id="edit-specialist-name" value="${escHtml(r.specialistName)}"></div>
-      <div class="form-group"><label>Specialist Email</label><input type="email" id="edit-specialist-email" value="${escHtml(r.specialistEmail)}"></div>
-      <div class="form-group"><label>Supervisor Name</label><input id="edit-supervisor-name" value="${escHtml(r.supervisorName)}"></div>
-      <div class="form-group"><label>Supervisor Email</label><input type="email" id="edit-supervisor-email" value="${escHtml(r.supervisorEmail)}"></div>
-      <div class="form-group"><label>Manager Name</label><input id="edit-manager-name" value="${escHtml(r.managerName)}"></div>
+      <div class="form-group" style="position:relative">
+        <label>Specialist Name</label>
+        <input id="edit-specialist-name" value="${escHtml(r.specialistName)}" autocomplete="off"
+          oninput="editSpecialistSearch(this.value)" onfocus="editSpecialistSearch(this.value)" placeholder="Search agent name…">
+        <div id="edit-specialist-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #E2E8F0;border-radius:.5rem;box-shadow:0 4px 16px rgba(0,0,0,.1);z-index:999;max-height:180px;overflow-y:auto"></div>
+      </div>
+      <div class="form-group"><label>Specialist Email</label><input type="email" id="edit-specialist-email" value="${escHtml(r.specialistEmail)}" readonly style="background:#F8FAFC;color:#64748B"></div>
+      <div class="form-group"><label>Supervisor Name</label><input id="edit-supervisor-name" value="${escHtml(r.supervisorName)}" readonly style="background:#F8FAFC;color:#64748B"></div>
+      <div class="form-group"><label>Supervisor Email</label><input type="email" id="edit-supervisor-email" value="${escHtml(r.supervisorEmail)}" readonly style="background:#F8FAFC;color:#64748B"></div>
+      <div class="form-group"><label>Manager Name</label><input id="edit-manager-name" value="${escHtml(r.managerName)}" readonly style="background:#F8FAFC;color:#64748B"></div>
       <div class="form-group">
         <label>Main Reason</label>
         <select id="edit-main-reason" onchange="updateEditSubReasons()">
@@ -4105,20 +4209,31 @@ function renderQueue(data) {
     queue = queue.filter(r=>r.supervisorEmail.toLowerCase()===(u?.email||'').toLowerCase());
   }
 
-  // Show filter bar for admins only; populate supervisor dropdown
+  // Show filter bar for admins only; populate dropdowns
   const filterBar = document.getElementById('queue-filter-bar');
   if (filterBar) filterBar.style.display = isAdmin() ? '' : 'none';
-  const qSupEl = document.getElementById('queue-filter-supervisor');
-  if (qSupEl && isAdmin()) {
-    const prev = qSupEl.value;
-    const sups = [...new Set(queue.map(r=>r.supervisorName).filter(Boolean))].sort();
-    qSupEl.innerHTML = '<option value="">All Supervisors</option>' +
-      sups.map(s=>`<option${s===prev?' selected':''}>${escHtml(s)}</option>`).join('');
+  if (isAdmin()) {
+    const qMgrEl = document.getElementById('queue-filter-manager');
+    if (qMgrEl) {
+      const prev = qMgrEl.value;
+      const mgrs = [...new Set(queue.map(r=>r.managerName).filter(Boolean))].sort();
+      qMgrEl.innerHTML = '<option value="">All Managers</option>' +
+        mgrs.map(m=>`<option${m===prev?' selected':''}>${escHtml(m)}</option>`).join('');
+    }
+    const qSupEl = document.getElementById('queue-filter-supervisor');
+    if (qSupEl) {
+      const prev = qSupEl.value;
+      const sups = [...new Set(queue.map(r=>r.supervisorName).filter(Boolean))].sort();
+      qSupEl.innerHTML = '<option value="">All Supervisors</option>' +
+        sups.map(s=>`<option${s===prev?' selected':''}>${escHtml(s)}</option>`).join('');
+    }
   }
 
   // Apply filters
+  const qMgr    = document.getElementById('queue-filter-manager')?.value    || '';
   const qSup    = document.getElementById('queue-filter-supervisor')?.value || '';
   const qStatus = document.getElementById('queue-filter-status')?.value     || '';
+  if (qMgr)    queue = queue.filter(r => r.managerName    === qMgr);
   if (qSup)    queue = queue.filter(r => r.supervisorName === qSup);
   if (qStatus) queue = queue.filter(r => r.feedbackStatus === qStatus);
 
@@ -4335,7 +4450,7 @@ function slaDaysLeft(submittedAt) {
 }
 
 function clearQueueFilters() {
-  ['queue-filter-supervisor','queue-filter-status'].forEach(id => {
+  ['queue-filter-manager','queue-filter-supervisor','queue-filter-status'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   renderQueue(cachedData);
