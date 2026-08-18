@@ -1570,7 +1570,7 @@ const SLA_DAYS            = 15;
 const APP_START_MONTH     = '2026-04'; // App went live — never show months before this
 
 // ─── LOCAL DATA CACHE (instant re-load on return visits) ─────────────────────
-const DATA_CACHE_KEY = 'dsat_data_v5'; // bumped — normalizeRow now includes originalMainReason
+const DATA_CACHE_KEY = 'dsat_data_v6'; // bumped — normalizeRow now includes correctionAcknowledgedAt
 const DATA_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
 // ── SIDEBAR HELPERS ──────────────────────────────────────────────────────────
@@ -1906,6 +1906,7 @@ function normalizeRow(r) {
     disputeReviewedBy: String(r.disputeReviewedBy||''), disputeReviewedAt: String(r.disputeReviewedAt||''),
     correctionType: String(r.correctionType||''), correctionNotes: String(r.correctionNotes||''),
     originalMainReason: String(r.originalMainReason||''),
+    correctionAcknowledgedAt: String(r.correctionAcknowledgedAt||''),
     agentAckToken: String(r.agentAckToken||''),
     agentAckAt:    String(r.agentAckAt||''),
     adminReviewedBy: String(r.adminReviewedBy||''),
@@ -4075,10 +4076,24 @@ async function saveEditRecord() {
     showToast('✅ Record updated with audit trail.');
     closeModal('detail-modal');
     // Local update — no full re-fetch needed
-    const _eu = getUser();
+    const _eu  = getUser();
     const _eri = cachedData.findIndex(r => String(r.id) === String(record.id));
-    if (_eri >= 0) cachedData[_eri] = normalizeRow({...cachedData[_eri], ...record, editedFlag:'TRUE', lastEditedByName:_eu?.name||'', lastEditedByEmail:_eu?.email||'', lastEditedAt:new Date().toISOString()});
+    if (_eri >= 0) {
+      const _origFb = cachedData[_eri].feedbackStatus || '';
+      // Mirror the server logic: if corrected to Agent-Related and not yet queued → Pending
+      const _newFb  = (record.mainReason === 'Agent - Related' && !_origFb) ? 'Pending' : _origFb;
+      cachedData[_eri] = normalizeRow({
+        ...cachedData[_eri], ...record,
+        feedbackStatus:    _newFb,
+        editedFlag:        'TRUE',
+        lastEditedByName:  _eu?.name  || '',
+        lastEditedByEmail: _eu?.email || '',
+        lastEditedAt:      new Date().toISOString()
+      });
+    }
+    updateRoleUI(); // refresh queue badge count
     if (currentPage==='records') renderRecordsGrouped();
+    if (currentPage==='queue')   renderQueue(cachedData);
   } catch(err) { showToast('❌ '+err.message,'#EF4444'); }
 }
 
@@ -5649,7 +5664,8 @@ function renderCorrections() {
       <th>DSAT Date</th>
       <th>Correction Type</th>
       <th style="min-width:280px">Notes from Admin</th>
-      <th>Corrected By · When</th>`;
+      <th>Corrected By · When</th>
+      <th>Status</th>`;
 
     tbody.innerHTML = myRecords.map(r => `
       <tr style="border-bottom:1px solid #F8FAFC">
@@ -5668,7 +5684,26 @@ function renderCorrections() {
           <span style="font-size:.72rem">${fmtDateTime(r.lastEditedAt)}</span>
           &nbsp;<button class="btn btn-secondary btn-sm" style="padding:.15rem .45rem;font-size:.7rem" onclick="openDetail('${r.id}')">View</button>
         </td>
+        <td style="padding:.6rem .75rem;white-space:nowrap">
+          ${r.correctionAcknowledgedAt
+            ? `<span style="background:#DCFCE7;color:#15803D;padding:.2rem .55rem;border-radius:.35rem;font-size:.72rem;font-weight:600">✅ Seen</span><br><span style="font-size:.68rem;color:#94A3B8">${fmtDate(r.correctionAcknowledgedAt)}</span>`
+            : `<span style="background:#FEF9C3;color:#92400E;padding:.2rem .55rem;border-radius:.35rem;font-size:.72rem;font-weight:600">🆕 New</span>`}
+        </td>
       </tr>`).join('');
+
+    // Auto-acknowledge: fire-and-forget when analyst views their corrections
+    const unacked = myRecords.filter(r => !r.correctionAcknowledgedAt).map(r => r.id);
+    if (unacked.length) {
+      apiPost({ action: 'acknowledgeCorrections', ids: unacked }).then(() => {
+        const now = new Date().toISOString();
+        unacked.forEach(id => {
+          const i = cachedData.findIndex(r => r.id === id);
+          if (i >= 0) cachedData[i] = normalizeRow({ ...cachedData[i], correctionAcknowledgedAt: now });
+        });
+        // Quietly refresh the table to flip 🆕→✅ without a full page re-render
+        renderCorrections();
+      }).catch(() => {}); // silent fail — non-critical
+    }
     return;
   }
 
@@ -5757,11 +5792,15 @@ function renderCorrections() {
   const topEditor = Object.entries(editorCounts).sort((a,b)=>b[1]-a[1])[0];
 
   // KPI stats
+  const acknowledged   = corrected.filter(r => r.correctionAcknowledgedAt).length;
+  const ackRate        = corrected.length ? Math.round(acknowledged / corrected.length * 100) : 0;
+  const notAcked       = corrected.length - acknowledged;
   document.getElementById('corr-stats').innerHTML = `
     <div class="stat-card indigo"><div class="stat-label">Total DSATs in Range</div><div class="stat-value">${base.length}</div><div class="stat-sub">Matching filters</div></div>
     <div class="stat-card amber"><div class="stat-label">Corrected Records</div><div class="stat-value">${corrected.length}</div><div class="stat-sub">Admin-edited submissions</div></div>
     <div class="stat-card red"><div class="stat-label">Correction Rate</div><div class="stat-value">${ratio}%</div><div class="stat-sub">of total DSATs edited</div></div>
-    <div class="stat-card sky"><div class="stat-label">Admins Who Edited</div><div class="stat-value">${Object.keys(editorCounts).length}</div><div class="stat-sub">${topEditor ? 'Top: '+escHtml(topEditor[0])+' ('+topEditor[1]+')' : 'None yet'}</div></div>`;
+    <div class="stat-card sky"><div class="stat-label">Admins Who Edited</div><div class="stat-value">${Object.keys(editorCounts).length}</div><div class="stat-sub">${topEditor ? 'Top: '+escHtml(topEditor[0])+' ('+topEditor[1]+')' : 'None yet'}</div></div>
+    <div class="stat-card green"><div class="stat-label">Corrections Seen</div><div class="stat-value">${acknowledged}<span style="font-size:1rem;color:#86EFAC"> / ${corrected.length}</span></div><div class="stat-sub">${ackRate}% acknowledged${notAcked > 0 ? ' · '+notAcked+' not yet seen' : ''}</div></div>`;
 
   // Group by submitter
   const bySubmitter = {};
@@ -5854,7 +5893,12 @@ function renderCorrections() {
             ${r.correctionType ? `<span style="background:#EFF6FF;color:#1D4ED8;padding:.15rem .5rem;border-radius:.3rem;font-size:.72rem;font-weight:600;display:inline-block;margin-bottom:.2rem">${escHtml(r.correctionType)}</span><br>` : ''}
             <span style="font-size:.75rem;color:#475569" title="${escHtml(r.correctionNotes||'')}">${r.correctionNotes ? escHtml(r.correctionNotes.length>70 ? r.correctionNotes.slice(0,70)+'…' : r.correctionNotes) : '<span style="color:#94A3B8">No notes</span>'}</span>
           </td>
-          <td style="white-space:nowrap">${fmtDateTime(r.lastEditedAt)}&nbsp;<button class="btn btn-secondary btn-sm" style="padding:.2rem .5rem;font-size:.72rem" onclick="openDetail('${r.id}')">View</button></td>
+          <td style="white-space:nowrap">
+            ${fmtDateTime(r.lastEditedAt)}&nbsp;<button class="btn btn-secondary btn-sm" style="padding:.2rem .5rem;font-size:.72rem" onclick="openDetail('${r.id}')">View</button><br>
+            ${r.correctionAcknowledgedAt
+              ? `<span style="background:#DCFCE7;color:#15803D;padding:.15rem .45rem;border-radius:.3rem;font-size:.68rem;font-weight:600;margin-top:.2rem;display:inline-block">✅ Seen ${fmtDate(r.correctionAcknowledgedAt)}</span>`
+              : `<span style="background:#FEF9C3;color:#92400E;padding:.15rem .45rem;border-radius:.3rem;font-size:.68rem;font-weight:600;margin-top:.2rem;display:inline-block">⏳ Not seen</span>`}
+          </td>
         </tr>`;
       });
     }
@@ -6055,10 +6099,12 @@ function downloadCorrectionsCsv() {
 
   const cols   = ['ticketId','dsatDate','analysisDate','submittedByName','submittedByEmail',
                   'originalMainReason','mainReason','subReason',
-                  'correctionType','correctionNotes','lastEditedByName','lastEditedAt'];
+                  'correctionType','correctionNotes','lastEditedByName','lastEditedAt',
+                  'correctionAcknowledgedAt'];
   const header = ['Ticket ID','DSAT Date','Analysis Date','Submitted By','Submitter Email',
                   'Original Category','Corrected Category','Sub-Reason',
-                  'Correction Type','Correction Notes','Corrected By','Corrected At'];
+                  'Correction Type','Correction Notes','Corrected By','Corrected At',
+                  'Seen At (Submitter)'];
 
   const escCsv = v => {
     if (v == null) return '';
