@@ -1437,6 +1437,18 @@ tr:hover td{background:#FAFBFF}
       <div style="position:relative;height:340px"><canvas id="corr-chart"></canvas></div>
     </div>
 
+    <!-- Category corrections chart + matrix -->
+    <div class="card" id="corr-category-card" style="margin-bottom:1.25rem">
+      <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem">
+        <span>📊 Corrections by Category <small style="font-weight:400;color:#64748B;font-size:.8rem">— correction rate per main reason & category changes</small></span>
+        <button class="btn btn-secondary btn-sm" onclick="downloadCorrectionsCsv()" style="font-size:.75rem">⬇ Download CSV</button>
+      </div>
+      <!-- Rate chart -->
+      <div style="position:relative;height:260px;margin-bottom:1.25rem"><canvas id="corr-category-chart"></canvas></div>
+      <!-- FROM → TO matrix -->
+      <div id="corr-category-matrix"></div>
+    </div>
+
     <!-- Full-width table -->
     <div class="card">
       <div class="card-title">📋 Breakdown by Submitter <small style="font-weight:400;color:#64748B;font-size:.8rem">— click a row to expand corrected records</small></div>
@@ -1452,7 +1464,7 @@ tr:hover td{background:#FAFBFF}
           <tbody id="corr-tbody"></tbody>
         </table>
       </div>
-      <p style="font-size:.75rem;color:#94A3B8;margin-top:.5rem;padding:.5rem 0 0">Expanded rows show: Correction Type · Correction Notes (hover for full text) · Edited At · View</p>
+      <p style="font-size:.75rem;color:#94A3B8;margin-top:.5rem;padding:.5rem 0 0">Expanded rows show: Original → New category · Correction Type · Notes · Edited At · View</p>
     </div>
   </div>
 
@@ -1552,7 +1564,7 @@ const SLA_DAYS            = 15;
 const APP_START_MONTH     = '2026-04'; // App went live — never show months before this
 
 // ─── LOCAL DATA CACHE (instant re-load on return visits) ─────────────────────
-const DATA_CACHE_KEY = 'dsat_data_v4'; // bumped — normalizeRow now includes agentAckToken/agentAckAt
+const DATA_CACHE_KEY = 'dsat_data_v5'; // bumped — normalizeRow now includes originalMainReason
 const DATA_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
 // ── SIDEBAR HELPERS ──────────────────────────────────────────────────────────
@@ -1887,6 +1899,7 @@ function normalizeRow(r) {
     feedbackProvidedAt: String(r.feedbackProvidedAt||''), disputeNotes: String(r.disputeNotes||''),
     disputeReviewedBy: String(r.disputeReviewedBy||''), disputeReviewedAt: String(r.disputeReviewedAt||''),
     correctionType: String(r.correctionType||''), correctionNotes: String(r.correctionNotes||''),
+    originalMainReason: String(r.originalMainReason||''),
     agentAckToken: String(r.agentAckToken||''),
     agentAckAt:    String(r.agentAckAt||''),
     adminReviewedBy: String(r.adminReviewedBy||''),
@@ -5587,6 +5600,84 @@ function renderAgents() {
 let expandedSubmitters = new Set();
 
 function renderCorrections() {
+  // ── Personal view for analysts (non-admin) ────────────────────────────────
+  if (!isAdmin()) {
+    const u         = getUser();
+    const myEmail   = (u?.email||'').toLowerCase();
+    const myRecords = cachedData.filter(r =>
+      (r.submittedByEmail||'').toLowerCase() === myEmail &&
+      (r.editedFlag==='TRUE' || r.editedFlag===true) &&
+      (r.correctionType || r.correctionNotes)
+    ).sort((a,b) => (b.lastEditedAt||'').localeCompare(a.lastEditedAt||''));
+
+    // Hide admin-only filters and stats
+    const filterCard = document.querySelector('#page-corrections .card');
+    if (filterCard) filterCard.style.display = 'none';
+    document.getElementById('corr-stats').innerHTML = '';
+    const chartCard = document.querySelector('#page-corrections .card:nth-of-type(2)');
+    // Hide all cards except the table
+    document.querySelectorAll('#page-corrections .card').forEach(c => c.style.display = 'none');
+
+    // Update header
+    const subEl = document.getElementById('corr-page-sub');
+    if (subEl) subEl.textContent = 'Corrections made to your submissions by an admin';
+
+    // Render personal corrections table
+    const tbody = document.getElementById('corr-tbody');
+    const tableCard = tbody?.closest('.card');
+    if (tableCard) {
+      tableCard.style.display = '';
+      const titleEl = tableCard.querySelector('.card-title');
+      if (titleEl) titleEl.innerHTML = `✏️ My Corrections <span style="font-weight:400;font-size:.8rem;color:#64748B">— ${myRecords.length} corrected record${myRecords.length!==1?'s':''}</span>`;
+    }
+
+    if (!myRecords.length) {
+      tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><div class="icon">✅</div><p>No corrections on your submissions yet.</p></div></td></tr>`;
+      return;
+    }
+
+    // Update table headers for personal view
+    const thead = tbody?.closest('table')?.querySelector('thead tr');
+    if (thead) thead.innerHTML = `
+      <th style="min-width:120px">Ticket</th>
+      <th>DSAT Date</th>
+      <th>Correction Type</th>
+      <th style="min-width:280px">Notes from Admin</th>
+      <th>Corrected By · When</th>`;
+
+    tbody.innerHTML = myRecords.map(r => `
+      <tr style="border-bottom:1px solid #F8FAFC">
+        <td style="padding:.6rem .75rem;font-weight:700;color:#4F46E5;cursor:pointer;text-decoration:underline;text-underline-offset:2px" onclick="openDetail('${r.id}')">#${escHtml(r.ticketId)}</td>
+        <td style="padding:.6rem .75rem;color:#64748B;white-space:nowrap">${fmtDate(r.dsatDate)}</td>
+        <td style="padding:.6rem .75rem">
+          ${r.correctionType
+            ? `<span style="background:#EFF6FF;color:#1D4ED8;padding:.2rem .6rem;border-radius:.35rem;font-size:.75rem;font-weight:700">${escHtml(r.correctionType)}</span>`
+            : '<span style="color:#94A3B8;font-size:.8rem">—</span>'}
+        </td>
+        <td style="padding:.6rem .75rem;font-size:.83rem;color:#374151;line-height:1.5">
+          ${r.correctionNotes ? escHtml(r.correctionNotes) : '<span style="color:#94A3B8;font-style:italic">No notes</span>'}
+        </td>
+        <td style="padding:.6rem .75rem;white-space:nowrap;font-size:.8rem;color:#64748B">
+          ${escHtml(r.lastEditedByName||r.lastEditedByEmail||'Admin')}<br>
+          <span style="font-size:.72rem">${fmtDateTime(r.lastEditedAt)}</span>
+          &nbsp;<button class="btn btn-secondary btn-sm" style="padding:.15rem .45rem;font-size:.7rem" onclick="openDetail('${r.id}')">View</button>
+        </td>
+      </tr>`).join('');
+    return;
+  }
+
+  // ── Admin view ────────────────────────────────────────────────────────────
+  // Restore all cards (in case user switched from analyst preview)
+  document.querySelectorAll('#page-corrections .card').forEach(c => c.style.display = '');
+  // Restore table headers
+  const thead = document.querySelector('#corr-tbody')?.closest('table')?.querySelector('thead tr');
+  if (thead) thead.innerHTML = `
+    <th style="min-width:200px">Submitter</th>
+    <th>Total Submitted</th>
+    <th>Corrected</th>
+    <th>Correction Rate</th>
+    <th>Last Corrected</th>`;
+
   // ── Populate month picker ─────────────────────────────────────────────────
   const monthSel = document.getElementById('corr-filter-month');
   if (monthSel) {
@@ -5720,6 +5811,9 @@ function renderCorrections() {
     });
   }
 
+  // Category corrections chart + matrix
+  renderCategoryCorrectionsChart(corrected, base);
+
   // Expandable table by submitter
   let html = '';
   rows.forEach(row => {
@@ -5737,7 +5831,9 @@ function renderCorrections() {
       row.corrected.sort((a,b)=>(b.lastEditedAt||'').localeCompare(a.lastEditedAt||'')).forEach(r => {
         html += `<tr class="an-sub-row">
           <td style="padding-left:2.5rem">↳ <strong>#${escHtml(r.ticketId)}</strong> · ${fmtDate(r.dsatDate)}</td>
-          <td>${reasonBadge(r.mainReason)}</td>
+          <td>${r.originalMainReason && r.originalMainReason !== r.mainReason
+            ? `<span style="color:#94A3B8;text-decoration:line-through;font-size:.73rem;display:block;line-height:1.2">${escHtml(r.originalMainReason)}</span><span style="font-size:.7rem;color:#64748B">→</span> ${reasonBadge(r.mainReason)}`
+            : reasonBadge(r.mainReason)}</td>
           <td><em style="font-size:.8rem">${escHtml(r.lastEditedByName||r.lastEditedByEmail||'—')}</em></td>
           <td style="max-width:280px">
             ${r.correctionType ? `<span style="background:#EFF6FF;color:#1D4ED8;padding:.15rem .5rem;border-radius:.3rem;font-size:.72rem;font-weight:600;display:inline-block;margin-bottom:.2rem">${escHtml(r.correctionType)}</span><br>` : ''}
@@ -5774,6 +5870,196 @@ function clearCorrFilters() {
   if (monthSel) monthSel.value = new Date().toISOString().slice(0,7);
   expandedSubmitters.clear();
   renderCorrections();
+}
+
+// ─── Category Corrections Chart ───────────────────────────────────────────────
+function renderCategoryCorrectionsChart(corrected, base) {
+  const card = document.getElementById('corr-category-card');
+  if (!card) return;
+  card.style.display = base.length ? '' : 'none';
+
+  // Effective "original" category: if a correction changed the category, use originalMainReason; else mainReason
+  const origCat = r =>
+    (r.originalMainReason && r.originalMainReason !== r.mainReason)
+      ? r.originalMainReason
+      : r.mainReason;
+
+  // Count totals and corrections per category
+  const catStats = {};
+  base.forEach(r => {
+    const cat = origCat(r) || 'Unknown';
+    if (!catStats[cat]) catStats[cat] = { total: 0, corrected: 0 };
+    catStats[cat].total++;
+  });
+  corrected.forEach(r => {
+    const cat = origCat(r) || 'Unknown';
+    if (!catStats[cat]) catStats[cat] = { total: 0, corrected: 0 };
+    catStats[cat].corrected++;
+  });
+
+  const catEntries = Object.entries(catStats)
+    .filter(([, v]) => v.total > 0)
+    .sort((a, b) => (b[1].corrected / b[1].total) - (a[1].corrected / a[1].total));
+
+  // ─ Rate bar chart ─────────────────────────────────────────────────────────
+  if (chartInstances['corr-category-chart']) {
+    chartInstances['corr-category-chart'].destroy();
+    delete chartInstances['corr-category-chart'];
+  }
+  const catCtx = document.getElementById('corr-category-chart');
+  if (catCtx && catEntries.length) {
+    const rates  = catEntries.map(([, v]) => Math.round(v.corrected / v.total * 100));
+    const colors = rates.map(v => v >= 20 ? '#EF4444' : v >= 10 ? '#F59E0B' : '#10B981');
+    chartInstances['corr-category-chart'] = new Chart(catCtx, {
+      type: 'bar',
+      data: {
+        labels: catEntries.map(([k]) => k),
+        datasets: [{
+          label: 'Correction Rate %',
+          data: rates,
+          backgroundColor: colors,
+          borderRadius: 6,
+          barPercentage: 0.55
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const [, v] = catEntries[ctx.dataIndex];
+                return ` ${ctx.raw}%  —  ${v.corrected} corrected out of ${v.total} total`;
+              }
+            }
+          },
+          datalabels: {
+            display: true,
+            anchor: 'end', align: 'right', offset: 4,
+            color: ctx => colors[ctx.dataIndex],
+            font: { size: 10, weight: '700' },
+            formatter: (v, ctx) => {
+              const [, s] = catEntries[ctx.dataIndex];
+              return `${v}% (${s.corrected}/${s.total})`;
+            }
+          }
+        },
+        scales: {
+          x: { beginAtZero: true, max: 105, ticks: { callback: v => v + '%', font: { size: 10 } }, grid: { color: '#F1F5F9' } },
+          y: { ticks: { font: { size: 11 } }, grid: { display: false } }
+        }
+      }
+    });
+  } else if (catCtx) {
+    catCtx.parentElement.innerHTML = '<p style="text-align:center;color:#94A3B8;padding:2rem;font-size:.85rem">No data yet.</p>';
+  }
+
+  // ─ FROM → TO matrix ───────────────────────────────────────────────────────
+  const matrixEl = document.getElementById('corr-category-matrix');
+  if (!matrixEl) return;
+
+  const transitions = corrected.filter(r => r.originalMainReason && r.originalMainReason !== r.mainReason);
+  if (!transitions.length) {
+    matrixEl.innerHTML = `<p style="font-size:.8rem;color:#94A3B8;margin:.25rem 0 0">
+      No category changes recorded yet — the FROM→TO matrix will appear once admins change a record's main reason category.
+      <em style="display:block;margin-top:.25rem">(Requires Code.gs update to start tracking original categories)</em>
+    </p>`;
+    return;
+  }
+
+  // Build matrix
+  const matrix  = {};
+  const allFroms = new Set();
+  const allTos   = new Set();
+  transitions.forEach(r => {
+    const from = r.originalMainReason;
+    const to   = r.mainReason;
+    allFroms.add(from);
+    allTos.add(to);
+    if (!matrix[from]) matrix[from] = {};
+    matrix[from][to] = (matrix[from][to] || 0) + 1;
+  });
+
+  const froms = [...allFroms].sort();
+  const tos   = [...allTos].sort();
+
+  matrixEl.innerHTML = `
+    <div style="margin-top:.75rem">
+      <div style="font-size:.8rem;font-weight:600;color:#374151;margin-bottom:.4rem">
+        Category Changes (FROM → TO) — ${transitions.length} record${transitions.length !== 1 ? 's' : ''} had their category changed
+      </div>
+      <div class="table-wrap">
+        <table style="font-size:.78rem;border-collapse:collapse;width:100%">
+          <thead>
+            <tr style="background:#F8FAFC">
+              <th style="padding:.4rem .6rem;text-align:left;color:#64748B;border-bottom:2px solid #E2E8F0;white-space:nowrap">FROM ↓ · TO →</th>
+              ${tos.map(t => `<th style="padding:.4rem .6rem;text-align:center;color:#64748B;border-bottom:2px solid #E2E8F0;white-space:nowrap">${escHtml(t)}</th>`).join('')}
+              <th style="padding:.4rem .6rem;text-align:center;color:#64748B;border-bottom:2px solid #E2E8F0">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${froms.map(from => {
+              const rowTotal = Object.values(matrix[from] || {}).reduce((s, v) => s + v, 0);
+              return `<tr style="border-bottom:1px solid #F1F5F9">
+                <td style="padding:.4rem .6rem;font-weight:600;white-space:nowrap">${escHtml(from)}</td>
+                ${tos.map(to => {
+                  const n = (matrix[from] || {})[to] || 0;
+                  return `<td style="padding:.4rem .6rem;text-align:center;color:${n > 0 ? '#1D4ED8' : '#CBD5E1'};font-weight:${n > 0 ? '700' : '400'}">${n > 0 ? n : '—'}</td>`;
+                }).join('')}
+                <td style="padding:.4rem .6rem;text-align:center;font-weight:700;color:#374151">${rowTotal}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// ─── Download Corrections CSV ──────────────────────────────────────────────────
+function downloadCorrectionsCsv() {
+  // Re-apply same filters as the Corrections page
+  const month     = document.getElementById('corr-filter-month')?.value;
+  const from      = document.getElementById('corr-filter-from')?.value;
+  const to        = document.getElementById('corr-filter-to')?.value;
+  const submitter = document.getElementById('corr-filter-submitter')?.value;
+  const editor    = document.getElementById('corr-filter-editor')?.value;
+
+  let base = [...cachedData];
+  if (month)          base = base.filter(r => (r.dsatDate || r.submittedAt || '').slice(0, 7) === month);
+  if (!month && from) base = base.filter(r => (r.dsatDate || r.submittedAt || '') >= from);
+  if (!month && to)   base = base.filter(r => (r.dsatDate || r.submittedAt || '') <= to);
+  if (submitter)      base = base.filter(r => r.submittedByName === submitter);
+  if (editor)         base = base.filter(r => r.lastEditedByName === editor);
+
+  const corrected = base.filter(r => r.editedFlag === 'TRUE' || r.editedFlag === true);
+  if (!corrected.length) { showToast('No corrected records to export.', '#F59E0B'); return; }
+
+  const cols   = ['ticketId','dsatDate','analysisDate','submittedByName','submittedByEmail',
+                  'originalMainReason','mainReason','subReason',
+                  'correctionType','correctionNotes','lastEditedByName','lastEditedAt'];
+  const header = ['Ticket ID','DSAT Date','Analysis Date','Submitted By','Submitter Email',
+                  'Original Category','Corrected Category','Sub-Reason',
+                  'Correction Type','Correction Notes','Corrected By','Corrected At'];
+
+  const escCsv = v => {
+    if (v == null) return '';
+    const s = String(v);
+    return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  const rows = [header, ...corrected.map(r => cols.map(c => escCsv(r[c] || '')))];
+  const csv  = rows.map(r => r.join(',')).join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'), { href: url, download: `dsat_corrections_${new Date().toISOString().slice(0, 10)}.csv` });
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast(`✅ Exported ${corrected.length} corrected records.`);
 }
 
 // ══ DISPUTES ══════════════════════════════════════════════════════════════════
