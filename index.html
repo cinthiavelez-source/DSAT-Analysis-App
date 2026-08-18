@@ -1419,6 +1419,12 @@ tr:hover td{background:#FAFBFF}
           </select>
         </div>
         <div class="form-group" style="min-width:180px;margin:0">
+          <label style="font-size:.75rem">Category</label>
+          <select id="corr-filter-category" onchange="renderCorrections()">
+            <option value="">All Categories</option>
+          </select>
+        </div>
+        <div class="form-group" style="min-width:180px;margin:0">
           <label style="font-size:.75rem">Edited By (Admin)</label>
           <select id="corr-filter-editor" onchange="renderCorrections()">
             <option value="">All Admins</option>
@@ -5696,8 +5702,15 @@ function renderCorrections() {
   // ── Populate submitter / editor dropdowns ─────────────────────────────────
   const submitters = [...new Set(cachedData.map(r=>r.submittedByName).filter(Boolean))].sort();
   const editors    = [...new Set(cachedData.filter(r=>r.lastEditedByName).map(r=>r.lastEditedByName).filter(Boolean))].sort();
-  const subSel = document.getElementById('corr-filter-submitter');
-  const edSel  = document.getElementById('corr-filter-editor');
+  const categories = [...new Set(cachedData.map(r=>r.mainReason).filter(Boolean))].sort();
+  const subSel  = document.getElementById('corr-filter-submitter');
+  const edSel   = document.getElementById('corr-filter-editor');
+  const catSel  = document.getElementById('corr-filter-category');
+  if (catSel) {
+    const prev = catSel.value;
+    catSel.innerHTML = '<option value="">All Categories</option>' +
+      categories.map(c=>`<option${c===prev?' selected':''}>${escHtml(c)}</option>`).join('');
+  }
   if (subSel) {
     const prev = subSel.value;
     subSel.innerHTML = '<option value="">All Submitters</option>' +
@@ -5715,6 +5728,7 @@ function renderCorrections() {
   const to        = document.getElementById('corr-filter-to')?.value;
   const submitter = document.getElementById('corr-filter-submitter')?.value;
   const editor    = document.getElementById('corr-filter-editor')?.value;
+  const category  = document.getElementById('corr-filter-category')?.value;
 
   // Update subtitle
   const subEl = document.getElementById('corr-page-sub');
@@ -5724,11 +5738,12 @@ function renderCorrections() {
   }
 
   let base = [...cachedData];
-  if (month)     base = base.filter(r => (r.dsatDate||r.submittedAt||'').slice(0,7) === month);
+  if (month)          base = base.filter(r => (r.dsatDate||r.submittedAt||'').slice(0,7) === month);
   if (!month && from) base = base.filter(r => (r.dsatDate||r.submittedAt||'') >= from);
   if (!month && to)   base = base.filter(r => (r.dsatDate||r.submittedAt||'') <= to);
-  if (submitter) base = base.filter(r => r.submittedByName === submitter);
-  if (editor)    base = base.filter(r => r.lastEditedByName === editor);
+  if (submitter)      base = base.filter(r => r.submittedByName === submitter);
+  if (editor)         base = base.filter(r => r.lastEditedByName === editor);
+  if (category)       base = base.filter(r => r.mainReason === category);
 
   const corrected = base.filter(r => r.editedFlag==='TRUE' || r.editedFlag===true);
   const ratio     = base.length ? Math.round(corrected.length / base.length * 100) : 0;
@@ -5862,7 +5877,7 @@ function renderCorrections() {
 }
 
 function clearCorrFilters() {
-  ['corr-filter-from','corr-filter-to','corr-filter-submitter','corr-filter-editor'].forEach(id => {
+  ['corr-filter-from','corr-filter-to','corr-filter-submitter','corr-filter-editor','corr-filter-category'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   // Reset month picker to current month
@@ -6025,6 +6040,7 @@ function downloadCorrectionsCsv() {
   const to        = document.getElementById('corr-filter-to')?.value;
   const submitter = document.getElementById('corr-filter-submitter')?.value;
   const editor    = document.getElementById('corr-filter-editor')?.value;
+  const category  = document.getElementById('corr-filter-category')?.value;
 
   let base = [...cachedData];
   if (month)          base = base.filter(r => (r.dsatDate || r.submittedAt || '').slice(0, 7) === month);
@@ -6032,6 +6048,7 @@ function downloadCorrectionsCsv() {
   if (!month && to)   base = base.filter(r => (r.dsatDate || r.submittedAt || '') <= to);
   if (submitter)      base = base.filter(r => r.submittedByName === submitter);
   if (editor)         base = base.filter(r => r.lastEditedByName === editor);
+  if (category)       base = base.filter(r => r.mainReason === category);
 
   const corrected = base.filter(r => r.editedFlag === 'TRUE' || r.editedFlag === true);
   if (!corrected.length) { showToast('No corrected records to export.', '#F59E0B'); return; }
