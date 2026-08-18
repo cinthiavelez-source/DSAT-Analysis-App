@@ -1874,7 +1874,21 @@ async function apiPost(body) {
       body: JSON.stringify({...body, email: u?.email||'', editorName: u?.name||''}),
       redirect:'follow'
     });
-    const data = await res.json();
+    const text = await res.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (_) {
+      // Apps Script returned HTML (timeout, quota, or deployment error).
+      // Extract a readable message from the HTML if possible.
+      const match = text.match(/<title>([^<]*)<\/title>/i) || text.match(/Error[^<]*/i);
+      const hint  = match ? match[1] || match[0] : 'Apps Script returned a non-JSON response';
+      throw new Error(
+        `Server error: "${hint}". ` +
+        `Try: Apps Script → Deploy → Manage deployments → Update to latest version, then retry. ` +
+        `(Raw: ${text.slice(0,120)}…)`
+      );
+    }
     if (data.error) throw new Error(data.error);
     return data;
   } finally {
@@ -4069,6 +4083,18 @@ function openDetail(id) {
   openModal('detail-modal');
 }
 
+// Normalizes any date value to YYYY-MM-DD for <input type="date">.
+// Handles: already correct "2026-08-16", ISO datetimes, locale strings, JS Date objects.
+function _toInputDate(val) {
+  if (!val) return '';
+  const s = String(val).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;           // already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return s.slice(0,10); // ISO datetime
+  const d = new Date(s);
+  if (!isNaN(d)) return d.toISOString().slice(0,10);
+  return '';
+}
+
 // ══ EDIT MODAL (admin only) ═══════════════════════════════════════════════════
 function openEditModal(id) {
   if (!isAdmin()) { showToast('Only admins can edit records.','#EF4444'); return; }
@@ -4081,8 +4107,8 @@ function openEditModal(id) {
     </p>
     <input type="hidden" id="edit-id" value="${escHtml(r.id)}">
     <div class="form-grid">
-      <div class="form-group"><label>Analysis Date</label><input type="date" id="edit-analysis-date" value="${escHtml(r.analysisDate)}"></div>
-      <div class="form-group"><label>DSAT Date</label><input type="date" id="edit-dsat-date" value="${escHtml(r.dsatDate)}"></div>
+      <div class="form-group"><label>Analysis Date *</label><input type="date" id="edit-analysis-date" required value="${_toInputDate(r.analysisDate)}"></div>
+      <div class="form-group"><label>DSAT Date *</label><input type="date" id="edit-dsat-date" required value="${_toInputDate(r.dsatDate)}"></div>
       <div class="form-group"><label>Ticket ID</label><input id="edit-ticket-id" value="${escHtml(r.ticketId)}"></div>
       <div class="form-group" style="position:relative">
         <label>Specialist Name</label>
@@ -4153,11 +4179,15 @@ async function saveEditRecord() {
   const _editId  = document.getElementById('edit-id').value;
   const _orig    = cachedData.find(x => x.id === _editId) || {};
   // Guard: never overwrite dates with empty — fall back to the original cached value
-  const _safeDate = (inputId, fallback) => document.getElementById(inputId)?.value || fallback || '';
+  const _safeDate = (inputId, fallback) => document.getElementById(inputId)?.value || _toInputDate(fallback) || '';
+  const _ad = _safeDate('edit-analysis-date', _orig.analysisDate);
+  const _dd = _safeDate('edit-dsat-date',     _orig.dsatDate);
+  if (!_ad) { showToast('⚠️ Analysis Date is required — please fill it in before saving.', '#F59E0B'); document.getElementById('edit-analysis-date')?.focus(); return; }
+  if (!_dd) { showToast('⚠️ DSAT Date is required — please fill it in before saving.',     '#F59E0B'); document.getElementById('edit-dsat-date')?.focus();     return; }
   const record = {
     id:                       _editId,
-    analysisDate:             _safeDate('edit-analysis-date', _orig.analysisDate),
-    dsatDate:                 _safeDate('edit-dsat-date',     _orig.dsatDate),
+    analysisDate:             _ad,
+    dsatDate:                 _dd,
     ticketId:                 document.getElementById('edit-ticket-id').value,
     specialistName:           document.getElementById('edit-specialist-name').value,
     specialistEmail:          document.getElementById('edit-specialist-email').value,
@@ -5211,8 +5241,8 @@ async function importEnrichmentCSV() {
     return;
   }
 
-  // ── Step 2: batch upload (500 rows per batch) ────────────────────────────
-  const BATCH_SIZE = 1000;
+  // ── Step 2: batch upload (200 rows per batch — keeps each call well under timeout) ──
+  const BATCH_SIZE = 200;
   const batches    = [];
   for (let i = 0; i < matchedRows.length; i += BATCH_SIZE) {
     batches.push(matchedRows.slice(i, i + BATCH_SIZE));
