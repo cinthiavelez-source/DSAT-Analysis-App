@@ -1889,7 +1889,9 @@ async function apiPost(body) {
         `(Raw: ${text.slice(0,120)}…)`
       );
     }
-    if (data.error) throw new Error(data.error);
+    // Treat empty-string error as an error (JSON.stringify drops undefined values,
+    // so the server may send {error:""} when it caught a non-Error throw).
+    if (data.error != null) throw new Error(data.error || 'Server returned an error without a message. Full response: ' + JSON.stringify(data));
     return data;
   } finally {
     if (isHeavy) showLoading(false);
@@ -5256,9 +5258,14 @@ async function importEnrichmentCSV() {
       status.style.color = '#64748B';
 
       const res = await apiPost({ action: 'importEnrichment', rows: batches[b] });
-      if (!res.ok) throw new Error(res.error || 'Unknown error on batch ' + (b + 1));
+      if (!res.ok) throw new Error(
+        res.error || ('Batch ' + (b + 1) + ' — server response: ' + JSON.stringify(res))
+      );
       totalAdded   += res.added   || 0;
       totalUpdated += res.updated || 0;
+
+      // Brief pause between batches so Apps Script quota doesn't compound
+      if (b < batches.length - 1) await new Promise(r => setTimeout(r, 800));
     }
 
     // ── Done ────────────────────────────────────────────────────────────────
