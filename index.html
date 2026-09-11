@@ -574,7 +574,12 @@ tr:hover td{background:#FAFBFF}
           <!-- 3. Ticket ID -->
           <div class="form-group">
             <label for="f-ticket-id">3. Ticket ID (number only) *</label>
-            <input type="text" id="f-ticket-id" placeholder="e.g. 1234567" pattern="[0-9]+" title="Numbers only" required>
+            <input type="text" id="f-ticket-id" placeholder="e.g. 1234567" pattern="[0-9]+" title="Numbers only" required
+              oninput="checkDuplicateTicket(this.value)"
+              onblur="checkDuplicateTicket(this.value)">
+            <div id="ticket-dup-warning" style="display:none;margin-top:.4rem;padding:.5rem .75rem;background:#FEF2F2;border:1px solid #FECACA;border-radius:.4rem;color:#DC2626;font-size:.8rem;font-weight:600">
+              ⚠️ Ticket ID already submitted — a previous audit exists for this ticket. You will not be able to submit a duplicate.
+            </div>
           </div>
 
           <!-- 4. Specialist Name (searchable) -->
@@ -1848,7 +1853,17 @@ async function apiFetch(silent = false) {
     cachedData         = (data.records      || []).map(normalizeRow);
     cachedHierarchy    = (data.hierarchy    || []);
     cachedHierarchyAll = (data.hierarchyAll || cachedHierarchy);
-    if (data.role) { cachedRole = data.role; updateRoleUI(); }
+    if (data.role) {
+      // Never silently downgrade to viewer on a background/silent refresh.
+      // A transient Roles-sheet read failure on the server returns 'viewer' for
+      // everyone — that's the root cause of the random viewer-access bug during
+      // peak usage.  Only apply the new role if it is equal or higher than what
+      // we already have; a lower role requires a full manual reload to take effect.
+      const roleRank = { admin: 3, supervisor: 2, analyst: 1, viewer: 0 };
+      const newRank  = roleRank[data.role]  ?? 0;
+      const curRank  = roleRank[cachedRole] ?? 0;
+      if (newRank >= curRank) { cachedRole = data.role; updateRoleUI(); }
+    }
     buildSupervisorFilter();
     populateSpecialistDropdown();
     saveDataCache(cachedData, cachedHierarchy); // persist for next visit
@@ -2558,6 +2573,17 @@ function validateDates() {
   return null; // all good
 }
 
+// ── Duplicate ticket check (runs on input + blur, and before submit) ──────────
+function checkDuplicateTicket(val) {
+  const warn = document.getElementById('ticket-dup-warning');
+  if (!warn) return false;
+  const tid = String(val || '').trim();
+  if (!tid) { warn.style.display = 'none'; return false; }
+  const isDup = cachedData.some(r => String(r.ticketId).trim() === tid);
+  warn.style.display = isDup ? 'block' : 'none';
+  return isDup;
+}
+
 // ══ SUBMIT DSAT ═══════════════════════════════════════════════════════════════
 async function submitDSAT(e) {
   e.preventDefault();
@@ -2567,6 +2593,14 @@ async function submitDSAT(e) {
   if (!mainReason) { showToast('Please select a main reason.','#EF4444'); return; }
   const subReason = document.getElementById('f-sub-reason').value;
   if (!subReason) { showToast('Please select a sub-reason.','#EF4444'); return; }
+
+  // ── Duplicate ticket ID — hard block before sending to server ──────────────
+  const ticketIdVal = document.getElementById('f-ticket-id').value;
+  if (checkDuplicateTicket(ticketIdVal)) {
+    showToast('⚠️ Ticket ID already exists — duplicate submission blocked.', '#EF4444');
+    document.getElementById('f-ticket-id').focus();
+    return;
+  }
 
   // ── Date validation — hard block for all invalid date combinations ─────────
   const dateError = validateDates();
