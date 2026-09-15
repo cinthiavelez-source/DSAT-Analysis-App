@@ -1877,40 +1877,77 @@ async function apiFetch(silent = false) {
   }
 }
 
+// _apiPostOnce: single attempt — used internally by apiPost's retry loop.
+async function _apiPostOnce(body) {
+  const u   = getUser();
+  const res = await fetch(scriptUrl(), {
+    method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify({...body, email: u?.email||'', editorName: u?.name||''}),
+    redirect:'follow'
+  });
+  const text = await res.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (_) {
+    // HTML response — extract the page title so the retry loop can surface it
+    // only if all retries are exhausted.
+    const match = text.match(/<title>([^<]*)<\/title>/i) || text.match(/Error[^<]*/i);
+    const hint  = match ? match[1] || match[0] : 'Apps Script returned a non-JSON response';
+    // Throw a typed error so the retry loop knows to retry (not a real app error)
+    const err   = new Error(hint);
+    err._htmlError = true;
+    err._raw = text.slice(0, 120);
+    throw err;
+  }
+  // Detect accidental doGet response (POST→GET redirect artifact: has records[] but no ok/error)
+  if (data.records && !('ok' in data) && !('error' in data)) {
+    const err = new Error('redirect-artifact');
+    err._htmlError = true;
+    throw err;
+  }
+  // Treat null/empty-string error as an error
+  if (data.error != null) throw new Error(data.error || 'Server returned an error without a message. Full response: ' + JSON.stringify(data));
+  return data;
+}
+
 async function apiPost(body) {
   // Only show the full-page overlay for imports — regular saves use
   // optimistic local updates so a heavy overlay is no longer needed.
   const isHeavy = (body.action === 'importEnrichment');
   if (isHeavy) showLoading(true,'Saving…');
-  try {
-    const u   = getUser();
-    const res = await fetch(scriptUrl(), {
-      method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({...body, email: u?.email||'', editorName: u?.name||''}),
-      redirect:'follow'
-    });
-    const text = await res.text();
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch (_) {
-      // Apps Script returned HTML (timeout, quota, or deployment error).
-      // Extract a readable message from the HTML if possible.
-      const match = text.match(/<title>([^<]*)<\/title>/i) || text.match(/Error[^<]*/i);
-      const hint  = match ? match[1] || match[0] : 'Apps Script returned a non-JSON response';
-      throw new Error(
-        `Server error: "${hint}". ` +
-        `Try: Apps Script → Deploy → Manage deployments → Update to latest version, then retry. ` +
-        `(Raw: ${text.slice(0,120)}…)`
-      );
+
+  // Retry up to 3 times on HTML/redirect errors (transient Apps Script deployment
+  // issues — the same "No se encontró la página" that showed up in the team Slack).
+  // Real app errors (duplicate ticket, not authorized, etc.) are NOT retried.
+  const MAX_ATTEMPTS = 3;
+  let lastErr;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      // Brief back-off before retry: 2s, then 4s
+      await new Promise(r => setTimeout(r, attempt * 2000));
     }
-    // Treat empty-string error as an error (JSON.stringify drops undefined values,
-    // so the server may send {error:""} when it caught a non-Error throw).
-    if (data.error != null) throw new Error(data.error || 'Server returned an error without a message. Full response: ' + JSON.stringify(data));
-    return data;
-  } finally {
-    if (isHeavy) showLoading(false);
+    try {
+      const data = await _apiPostOnce(body);
+      if (isHeavy) showLoading(false);
+      return data;
+    } catch (err) {
+      lastErr = err;
+      if (!err._htmlError) {
+        // Real application error — surface immediately, no retry
+        if (isHeavy) showLoading(false);
+        throw err;
+      }
+      // HTML / redirect error — will retry
+    }
   }
+
+  // All attempts failed — surface a clean error (no raw HTML in the message)
+  if (isHeavy) showLoading(false);
+  throw new Error(
+    `Server temporarily unavailable after ${MAX_ATTEMPTS} attempts — please try again in a few seconds. ` +
+    (lastErr?._raw ? `(${lastErr.message})` : '')
+  );
 }
 
 async function loadRoles() {
