@@ -2616,9 +2616,21 @@ function checkDuplicateTicket(val) {
   if (!warn) return false;
   const tid = String(val || '').trim();
   if (!tid) { warn.style.display = 'none'; return false; }
-  const isDup = cachedData.some(r => String(r.ticketId).trim() === tid);
-  warn.style.display = isDup ? 'block' : 'none';
-  return isDup;
+
+  const existing = cachedData.find(r => String(r.ticketId).trim() === tid);
+  if (!existing) { warn.style.display = 'none'; return false; }
+
+  // Build a helpful message so analysts can tell if it was their own prior submission
+  // (e.g. one that appeared to fail due to server errors but actually saved)
+  const who  = existing.submittedByName || existing.submittedByEmail || 'someone';
+  const when = existing.submittedAt
+    ? new Date(existing.submittedAt).toLocaleString('en-US', { dateStyle:'medium', timeStyle:'short' })
+    : (existing.analysisDate || '');
+  warn.innerHTML =
+    `⚠️ <strong>Ticket ID already submitted</strong> — this audit was recorded by <strong>${who}</strong>${when ? ' on ' + when : ''}. ` +
+    `You cannot submit a duplicate. If you think this is an error, check the Records tab for ticket #${tid}.`;
+  warn.style.display = 'block';
+  return true;
 }
 
 // ══ SUBMIT DSAT ═══════════════════════════════════════════════════════════════
@@ -2708,6 +2720,9 @@ async function submitDSAT(e) {
 
 function resetForm() {
   document.getElementById('dsat-form').reset();
+  // form.reset() doesn't fire oninput/onblur, so manually hide the duplicate banner
+  const dupWarn = document.getElementById('ticket-dup-warning');
+  if (dupWarn) dupWarn.style.display = 'none';
   // Specialist
   document.getElementById('f-specialist-search').value='';
   document.getElementById('f-specialist-name').value='';
