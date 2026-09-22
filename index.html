@@ -1621,11 +1621,13 @@ function loadDataCache() {
     if (!raw) return null;
     const obj = JSON.parse(raw);
     if (Date.now() - (obj.ts || 0) > DATA_CACHE_TTL) return null;
-    return obj; // {records (already normalised), hierarchy}
+    return obj; // {records, hierarchy, role?, ts}
   } catch(e) { return null; }
 }
 function saveDataCache(records, hierarchy) {
-  try { localStorage.setItem(DATA_CACHE_KEY, JSON.stringify({records, hierarchy, ts: Date.now()})); }
+  // Include cachedRole so we can restore it immediately on next page load,
+  // preventing the viewer-role flash when the background refresh is slow/fails.
+  try { localStorage.setItem(DATA_CACHE_KEY, JSON.stringify({records, hierarchy, role: cachedRole, ts: Date.now()})); }
   catch(e) {} // storage full — fail silently
 }
 // Admin: force-bust both server cache and browser cache, then reload fresh data
@@ -6520,6 +6522,12 @@ async function initApp() {
   if (cached && cached.records && cached.records.length) {
     cachedData      = cached.records;
     cachedHierarchy = cached.hierarchy || [];
+    // Restore the last-known role BEFORE updateRoleUI so the correct tabs/pages
+    // show immediately — without this, cachedRole starts as 'viewer' on every load
+    // and users get bounced to the agents tab until the background refresh finishes.
+    if (cached.role && cached.role !== 'viewer') {
+      cachedRole = cached.role;
+    }
     updateRoleUI();
     buildSupervisorFilter();
     populateSpecialistDropdown();
