@@ -435,7 +435,10 @@ tr:hover td{background:#FAFBFF}
   <div class="nav-user">
     <div class="user-pill" id="user-pill">
       <div class="user-avatar" id="user-avatar-nav">?</div>
-      <span id="user-name-nav" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;font-size:.8rem">—</span>
+      <div style="overflow:hidden;flex:1;min-width:0">
+        <span id="user-name-nav" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.8rem">—</span>
+        <span id="user-email-nav" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.68rem;opacity:.6" title="This is the email the app uses to look up your role in the Roles sheet">—</span>
+      </div>
       <span class="role-badge role-viewer" id="role-badge">viewer</span>
     </div>
     <button id="nav-force-refresh" onclick="forceRefreshData()" title="Clear cache and reload data from sheet — use after manual edits in Google Sheets"
@@ -2072,6 +2075,9 @@ function updateRoleUI() {
   document.getElementById('user-name-nav').textContent = u.name.split(' ')[0]; // first name only in sidebar
   const av = document.getElementById('user-avatar-nav');
   if (av) av.textContent = (u.name||'?').charAt(0).toUpperCase();
+  // Show the actual email used for role lookup — makes it easy to spot mismatches
+  const emailNav = document.getElementById('user-email-nav');
+  if (emailNav) emailNav.textContent = u.email || '';
   const rb  = document.getElementById('role-badge');
   const eff = _effectiveRole();
   const isViewer = eff === 'viewer';
