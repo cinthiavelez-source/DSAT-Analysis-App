@@ -757,19 +757,19 @@ tr:hover td{background:#FAFBFF}
       <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-end">
         <div class="form-group" style="min-width:200px;margin:0">
           <label style="font-size:.75rem">Manager</label>
-          <select id="queue-filter-manager" onchange="renderQueue(cachedData)">
+          <select id="queue-filter-manager" onchange="renderQueue(_queueSourceData())">
             <option value="">All Managers</option>
           </select>
         </div>
         <div class="form-group" style="min-width:200px;margin:0">
           <label style="font-size:.75rem">Supervisor</label>
-          <select id="queue-filter-supervisor" onchange="renderQueue(cachedData)">
+          <select id="queue-filter-supervisor" onchange="renderQueue(_queueSourceData())">
             <option value="">All Supervisors</option>
           </select>
         </div>
         <div class="form-group" style="min-width:160px;margin:0">
           <label style="font-size:.75rem">Status</label>
-          <select id="queue-filter-status" onchange="renderQueue(cachedData)">
+          <select id="queue-filter-status" onchange="renderQueue(_queueSourceData())">
             <option value="">All Statuses</option>
             <option>Pending</option>
             <option>Disputed</option>
@@ -777,7 +777,24 @@ tr:hover td{background:#FAFBFF}
           </select>
         </div>
         <button class="btn btn-warning btn-sm" onclick="clearQueueFilters()">↺ Reset Filters</button>
+        <!-- All-months pending toggle -->
+        <button id="queue-all-months-btn" class="btn btn-sm"
+          style="margin-left:auto;background:#EDE9FE;color:#6D28D9;border:1.5px solid #C4B5FD;font-weight:600"
+          onclick="toggleAllPendingView()">
+          📅 Show all months
+        </button>
       </div>
+    </div>
+    <!-- Banner shown when viewing all-months pending mode -->
+    <div id="queue-all-months-banner" style="display:none;background:#FEF3C7;border:1.5px solid #F59E0B;
+      color:#92400E;padding:.6rem 1.1rem;border-radius:.5rem;margin-bottom:1rem;
+      display:none;align-items:center;gap:.75rem;font-size:.85rem">
+      ⚠️ <strong>Showing all pending feedback across all months.</strong>
+      Cases are sorted oldest first — prioritize the ones at the top.
+      <button onclick="exitAllPendingView()" style="margin-left:auto;background:#F59E0B;color:#fff;
+        border:none;padding:.25rem .7rem;border-radius:.25rem;cursor:pointer;font-size:.8rem;white-space:nowrap">
+        ✕ Back to current month
+      </button>
     </div>
     <div class="stats-grid" id="queue-stats"></div>
     <div id="queue-sup-summary"></div>
@@ -1653,7 +1670,7 @@ async function forceRefreshData() {
     cachedData = fresh;
     updateRoleUI();
     // Re-render whichever page is currently visible (not just dashboard)
-    if      (currentPage === 'queue')       renderQueue(cachedData);
+    if      (currentPage === 'queue')       renderQueue(_queueSourceData());
     else if (currentPage === 'records')     renderRecordsGrouped();
     else if (currentPage === 'supervisors') renderSupervisors();
     else if (currentPage === 'corrections') renderCorrections();
@@ -1912,7 +1929,7 @@ async function fetchMonth(month) {
   // Re-render whichever page is currently showing
   if      (currentPage === 'dashboard')    applyDashFilters();
   else if (currentPage === 'records')      renderRecordsGrouped();
-  else if (currentPage === 'queue')        renderQueue(cachedData);
+  else if (currentPage === 'queue')        renderQueue(_queueSourceData());
   else if (currentPage === 'agents')       { _buildAgentsFilters(); renderAgents(); }
   else if (currentPage === 'supervisors')  renderSupervisors();
   else if (currentPage === 'corrections')  renderCorrections();
@@ -2095,7 +2112,7 @@ function navTo(page) {
     _populateRecMonthFilter();
     renderRecordsGrouped();
   }
-  else if (page==='queue')       renderQueue(cachedData);
+  else if (page==='queue')       { _updateQueueAllMonthsUI(); renderQueue(_queueSourceData()); }
   else if (page==='analytics')   { buildAnalyticsFilters(); renderAnalytics(); }
   else if (page==='supervisors') { buildSupervisorFilter(); _populateSupMonthFilter(); renderSupervisors(); }
   else if (page==='disputes')    renderDisputes();
@@ -2146,8 +2163,9 @@ function updateRoleUI() {
   rb.textContent = previewRole ? `${previewRole} (preview)` : cachedRole;
   rb.className   = 'role-badge role-'+(previewRole||cachedRole);
 
-  // Queue badge
-  const pending = cachedData.filter(r=>r.mainReason==='Agent - Related' && r.feedbackStatus==='Pending');
+  // Queue badge — use all-months pending data when available (more accurate count)
+  const pendingSrc = _pendingAllData || cachedData;
+  const pending = pendingSrc.filter(r=>r.mainReason==='Agent - Related' && r.feedbackStatus==='Pending');
   const myPending = (eff==='supervisor' && !isAdmin())
     ? pending.filter(r=>r.supervisorEmail.toLowerCase()===(u.email||'').toLowerCase())
     : pending;
@@ -4408,6 +4426,76 @@ async function saveEditRecord() {
     if (currentPage==='records') renderRecordsGrouped();
     if (currentPage==='queue')   renderQueue(cachedData);
   } catch(err) { showToast('❌ '+err.message,'#EF4444'); }
+}
+
+// ══ FEEDBACK QUEUE — ALL-MONTHS PENDING MODE ══════════════════════════════════
+// When active, the queue shows ALL pending agent-related records across all time,
+// fetched from a dedicated server endpoint. cachedData (current month) is untouched.
+let _pendingAllData     = null; // set by apiFetchPending()
+let _viewingAllPending  = false;
+
+// Returns the right data source for the queue: all-months pending or current-month data.
+function _queueSourceData() {
+  return _viewingAllPending ? (_pendingAllData || []) : cachedData;
+}
+
+async function toggleAllPendingView() {
+  if (_viewingAllPending) { exitAllPendingView(); return; }
+  _viewingAllPending = true;
+  _updateQueueAllMonthsUI();
+  if (!_pendingAllData) {
+    // First time — fetch from server
+    showLoading(true, 'Loading all pending cases…');
+    try {
+      const u   = getUser();
+      let url   = u ? `${scriptUrl()}?email=${encodeURIComponent(u.email)}` : scriptUrl();
+      url      += '&pendingOnly=true';
+      const res  = await fetch(url, { redirect: 'follow' });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      _pendingAllData = (data.records || []).map(normalizeRow);
+      // Sort oldest-first so the most overdue cases appear at the top
+      _pendingAllData.sort((a, b) => {
+        const da = a.dsatDate || a.submittedAt || a.analysisDate || '';
+        const db = b.dsatDate || b.submittedAt || b.analysisDate || '';
+        return da < db ? -1 : da > db ? 1 : 0;
+      });
+    } catch(err) {
+      showToast('❌ Could not load pending cases: ' + err.message, '#EF4444');
+      _viewingAllPending = false;
+      _updateQueueAllMonthsUI();
+      return;
+    } finally {
+      showLoading(false);
+    }
+  }
+  renderQueue(_pendingAllData);
+}
+
+function exitAllPendingView() {
+  _viewingAllPending = false;
+  _pendingAllData    = null; // clear so next open always fetches fresh
+  _updateQueueAllMonthsUI();
+  renderQueue(cachedData);
+}
+
+function _updateQueueAllMonthsUI() {
+  const btn    = document.getElementById('queue-all-months-btn');
+  const banner = document.getElementById('queue-all-months-banner');
+  if (btn) {
+    if (_viewingAllPending) {
+      btn.textContent  = '✕ Exit all-months view';
+      btn.style.background = '#FDE68A';
+      btn.style.color      = '#92400E';
+      btn.style.borderColor= '#F59E0B';
+    } else {
+      btn.textContent  = '📅 Show all months';
+      btn.style.background = '#EDE9FE';
+      btn.style.color      = '#6D28D9';
+      btn.style.borderColor= '#C4B5FD';
+    }
+  }
+  if (banner) banner.style.display = _viewingAllPending ? 'flex' : 'none';
 }
 
 // ══ FEEDBACK QUEUE ════════════════════════════════════════════════════════════
