@@ -471,7 +471,7 @@ tr:hover td{background:#FAFBFF}
       <div style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end">
         <div class="form-group" style="min-width:160px;margin:0">
           <label style="font-size:.75rem">Month</label>
-          <input type="month" id="dash-filter-month" onchange="applyDashFilters()" style="padding:.45rem .75rem">
+          <input type="month" id="dash-filter-month" onchange="onDashMonthChange(this.value)" style="padding:.45rem .75rem">
         </div>
         <div class="form-group" style="min-width:170px;margin:0">
           <label style="font-size:.75rem">Supervisor</label>
@@ -1065,7 +1065,7 @@ tr:hover td{background:#FAFBFF}
         <!-- Month picker (prominent, first) -->
         <div class="form-group" style="min-width:170px;margin:0">
           <label style="font-size:.75rem;font-weight:700;color:#4F46E5">📅 Month</label>
-          <select id="sup-filter-month" onchange="renderSupervisors()" style="font-weight:600;color:#1E293B">
+          <select id="sup-filter-month" onchange="onSupMonthChange(this.value)" style="font-weight:600;color:#1E293B">
             <option value="">All Time</option>
           </select>
         </div>
@@ -1359,7 +1359,7 @@ tr:hover td{background:#FAFBFF}
       <div style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end">
         <div class="form-group" style="min-width:170px;margin:0">
           <label style="font-size:.75rem;font-weight:700;color:#4F46E5">📅 Month</label>
-          <select id="agents-filter-month" onchange="renderAgents()" style="font-weight:600;color:#1E293B">
+          <select id="agents-filter-month" onchange="onAgentsMonthChange(this.value)" style="font-weight:600;color:#1E293B">
             <option value="">All Time</option>
           </select>
         </div>
@@ -1587,10 +1587,11 @@ const APP_START_MONTH     = '2026-04'; // App went live — never show months be
 const DATA_CACHE_KEY = 'dsat_data_v6'; // bumped — normalizeRow now includes correctionAcknowledgedAt
 const DATA_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
-// ─── DATE WINDOW ─────────────────────────────────────────────────────────────
-// Default: load 6 months (matches server DEFAULT_MONTHS).
-// Admins can expand via the "Load older records" banner that appears after load.
-let activeFetchMonths = 6;
+// ─── FETCH MONTH ─────────────────────────────────────────────────────────────
+// Which calendar month to load from the server. Format: 'YYYY-MM' or '' (all-time window).
+// Defaults to the current month on load; changes when the user selects a different month.
+// This keeps payloads small — only the selected month's records are loaded at a time.
+let activeFetchMonth = new Date().toISOString().slice(0, 7); // e.g. '2026-09'
 
 // ── SIDEBAR HELPERS ──────────────────────────────────────────────────────────
 function toggleSidebar() {
@@ -1867,9 +1868,11 @@ async function apiFetch(silent = false) {
   try {
     const u   = getUser();
     let url   = u ? `${scriptUrl()}?email=${encodeURIComponent(u.email)}` : scriptUrl();
-    // Pass the active date window so the server only returns records in that range.
-    // Default is 6 months; admins can expand via the "Load older records" banner.
-    url += `&months=${activeFetchMonths}`;
+    // Pass the active calendar month so the server returns only that month's records.
+    // Defaults to the current month; changes when the user selects a different month.
+    // Empty string → rolling window (all-time). Both are cheap because the server
+    // caches by month key, so the same month is never re-read from the sheet.
+    if (activeFetchMonth) url += `&month=${encodeURIComponent(activeFetchMonth)}`;
     const res = await fetch(url, {redirect:'follow'});
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
@@ -1891,8 +1894,6 @@ async function apiFetch(silent = false) {
     buildSupervisorFilter();
     populateSpecialistDropdown();
     saveDataCache(cachedData, cachedHierarchy); // persist for next visit
-    // Show "load older" banner for admins when we're in a windowed view
-    updateOlderRecordsBanner(data.cutoff);
     return cachedData;
   } catch(err) {
     console.error(err);
@@ -1903,43 +1904,19 @@ async function apiFetch(silent = false) {
   }
 }
 
-// Show a non-intrusive banner telling admins they're seeing a windowed view.
-function updateOlderRecordsBanner(cutoff) {
-  if (cachedRole !== 'admin') return; // only admins need to know
-  let banner = document.getElementById('older-records-banner');
-  if (!banner) {
-    banner = document.createElement('div');
-    banner.id = 'older-records-banner';
-    banner.style.cssText = 'display:none;background:#FEF3C7;border:1px solid #F59E0B;color:#92400E;' +
-      'padding:.5rem 1rem;font-size:.8rem;display:flex;align-items:center;gap:.75rem;' +
-      'border-radius:.375rem;margin:.5rem 1rem 0;';
-    const mc = document.getElementById('main-content');
-    if (mc) mc.prepend(banner);
-  }
-  if (activeFetchMonths < 24 && cutoff) {
-    const since = new Date(cutoff).toLocaleDateString('en-US',{month:'short',year:'numeric'});
-    banner.innerHTML = `⚠️ Showing records from <strong>${since}</strong> onward (last ${activeFetchMonths} months). ` +
-      `<button onclick="loadOlderRecords()" style="background:#F59E0B;color:#fff;border:none;padding:.25rem .6rem;` +
-      `border-radius:.25rem;cursor:pointer;font-size:.8rem;white-space:nowrap">Load all records (up to 24 months)</button>`;
-    banner.style.display = 'flex';
-  } else {
-    banner.style.display = 'none';
-  }
-}
-
-async function loadOlderRecords() {
-  activeFetchMonths = 24;
+// Fetch a specific calendar month from the server (called by the month filter).
+// If month is '' (All Time), fetch a 12-month rolling window instead.
+async function fetchMonth(month) {
+  activeFetchMonth = month || '';
   await apiFetch(false);
-  // Re-render the current tab so the new records show immediately
-  const active = document.querySelector('.tab-content.active');
-  if (active) {
-    const id = active.id;
-    if (id === 'tab-dash')    applyDashFilters();
-    else if (id === 'tab-agents')  renderAgentsTab();
-    else if (id === 'tab-supervisors') renderSupervisorsTab();
-    else if (id === 'tab-records')     renderRecordsTable();
-    else if (id === 'tab-corrections') renderCorrections();
-  }
+  // Re-render whichever page is currently showing
+  if      (currentPage === 'dashboard')    applyDashFilters();
+  else if (currentPage === 'records')      renderRecordsGrouped();
+  else if (currentPage === 'queue')        renderQueue(cachedData);
+  else if (currentPage === 'agents')       { _buildAgentsFilters(); renderAgents(); }
+  else if (currentPage === 'supervisors')  renderSupervisors();
+  else if (currentPage === 'corrections')  renderCorrections();
+  else if (currentPage === 'disputes')     renderDisputes();
 }
 
 // _apiPostOnce: single attempt — used internally by apiPost's retry loop.
@@ -3160,6 +3137,34 @@ function _prevMonthStr(ym) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
 }
 
+// Called when the dashboard month input changes.
+// If the user selects a different month than what's currently loaded, fetch it from
+// the server. Otherwise just re-apply client-side filters on the cached data.
+function onDashMonthChange(newMonth) {
+  if (newMonth !== activeFetchMonth) {
+    fetchMonth(newMonth);
+  } else {
+    applyDashFilters();
+  }
+}
+
+function onSupMonthChange(newMonth) {
+  if (newMonth && newMonth !== activeFetchMonth) {
+    fetchMonth(newMonth).then(() => renderSupervisors());
+  } else {
+    renderSupervisors();
+  }
+}
+
+function onAgentsMonthChange(newMonth) {
+  if (newMonth && newMonth !== activeFetchMonth) {
+    fetchMonth(newMonth).then(() => { _buildAgentsFilters(); renderAgents(); });
+  } else {
+    _buildAgentsFilters();
+    renderAgents();
+  }
+}
+
 function applyDashFilters() {
   const v = id => document.getElementById(id)?.value || '';
   const month   = v('dash-filter-month');
@@ -3198,11 +3203,17 @@ function applyDashFilters() {
 
 function clearDashFilters() {
   DASH_FILTER_IDS.forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
-  // Reset month to current
+  // Reset month filter to current month and refetch if needed
+  const currentMonth = new Date().toISOString().slice(0,7);
   const mEl = document.getElementById('dash-filter-month');
-  if (mEl) mEl.value = new Date().toISOString().slice(0,7);
+  if (mEl) mEl.value = currentMonth;
   const badge = document.getElementById('dash-filter-badge');
   if (badge) badge.textContent = '';
+  // If current month data isn't loaded, fetch it; otherwise just re-render
+  if (activeFetchMonth !== currentMonth) {
+    fetchMonth(currentMonth);
+    return;
+  }
   applyDashFilters();
 }
 
@@ -3254,6 +3265,18 @@ function _populateRecMonthFilter() {
 }
 
 function _onRecMonthChange() {
+  const month = document.getElementById('rec-month-filter')?.value || '';
+  if (month && month !== activeFetchMonth) {
+    // Need to fetch this month from server — sync the dashboard filter too
+    const dashEl = document.getElementById('dash-filter-month');
+    if (dashEl) dashEl.value = month;
+    fetchMonth(month).then(() => {
+      _populateRecWeekFilter();
+      _populateRecReasonFilter();
+      renderRecordsGrouped();
+    });
+    return;
+  }
   _populateRecWeekFilter();
   _populateRecReasonFilter();
   renderRecordsGrouped();
