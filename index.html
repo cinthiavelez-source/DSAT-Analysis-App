@@ -1718,8 +1718,19 @@ function getUser()         { try { return JSON.parse(localStorage.getItem(USER_K
 function setUser(u)        { localStorage.setItem(USER_KEY, JSON.stringify(u)); }
 function scriptUrl()       { return DEFAULT_SCRIPT_URL; }
 // When in preview mode, role functions use previewRole instead of real role
-function _effectiveRole()  { return previewRole || cachedRole; }
-function isAdmin()         { return !previewRole && (cachedRole==='admin' || (getUser()&&getUser().email.toLowerCase()===DEFAULT_ADMIN_EMAIL.toLowerCase())); }
+function _effectiveRole() {
+  if (previewRole) return previewRole;
+  // Fast path: if cachedRole is still 'viewer' but the signed-in email is the
+  // hardcoded admin, treat them as admin immediately — don't wait for the server.
+  // This prevents the DEFAULT_ADMIN from being stuck on viewer when the background
+  // refresh is slow, fails, or the server returns a stale cached response.
+  if (cachedRole === 'viewer') {
+    const u = getUser();
+    if (u && u.email && u.email.toLowerCase() === DEFAULT_ADMIN_EMAIL.toLowerCase()) return 'admin';
+  }
+  return cachedRole;
+}
+function isAdmin()         { return !previewRole && (_effectiveRole()==='admin'); }
 function isSupervisor()    { return _effectiveRole()==='supervisor' || isAdmin(); }
 function canSubmit()       { return _effectiveRole()!=='viewer'; }
 
@@ -6570,6 +6581,13 @@ async function initApp() {
   const dashMonthEl = document.getElementById('dash-filter-month');
   if (dashMonthEl && !dashMonthEl.value) dashMonthEl.value = new Date().toISOString().slice(0,7);
 
+  // ── Fast admin bootstrap — don't wait for the server ────────────────────────
+  // If the signed-in user is the hardcoded admin, set cachedRole immediately.
+  // This prevents the DEFAULT_ADMIN from seeing "VIEWER" during the server round-trip
+  // (e.g. when the background apiFetch is slow, fails, or Apps Script is cold-starting).
+  if (u && u.email && u.email.toLowerCase() === DEFAULT_ADMIN_EMAIL.toLowerCase()) {
+    cachedRole = 'admin';
+  }
   updateRoleUI();
 
   // ── Step 1: render from localStorage cache instantly if available ────────────
@@ -6583,17 +6601,21 @@ async function initApp() {
     if (cached.role && cached.role !== 'viewer') {
       cachedRole = cached.role;
     }
+    // Re-apply email-based admin override in case cached.role was 'viewer'
+    if (u && u.email && u.email.toLowerCase() === DEFAULT_ADMIN_EMAIL.toLowerCase()) {
+      cachedRole = 'admin';
+    }
     updateRoleUI();
     buildSupervisorFilter();
     populateSpecialistDropdown();
-    if (cachedRole === 'viewer') { navTo('agents'); }
+    if (_effectiveRole() === 'viewer') { navTo('agents'); }
     else applyDashFilters();
     // ── Step 2: refresh silently in background ────────────────────────────────
     apiFetch(true).then(d => {
       cachedData = d;
       updateRoleUI();
       if (!isModalOpen()) {
-        if (cachedRole === 'viewer') { if (currentPage === 'agents') renderAgents(); }
+        if (_effectiveRole() === 'viewer') { if (currentPage === 'agents') renderAgents(); }
         else applyDashFilters();
       }
     });
@@ -6612,7 +6634,7 @@ async function initApp() {
         cachedData = d;
         updateRoleUI();
         if (!isModalOpen()) {
-          if (cachedRole === 'viewer') navTo('agents');
+          if (_effectiveRole() === 'viewer') navTo('agents');
           else applyDashFilters();
         }
       })
