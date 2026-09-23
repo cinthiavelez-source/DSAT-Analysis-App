@@ -1587,6 +1587,11 @@ const APP_START_MONTH     = '2026-04'; // App went live — never show months be
 const DATA_CACHE_KEY = 'dsat_data_v6'; // bumped — normalizeRow now includes correctionAcknowledgedAt
 const DATA_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
+// ─── DATE WINDOW ─────────────────────────────────────────────────────────────
+// Default: load 6 months (matches server DEFAULT_MONTHS).
+// Admins can expand via the "Load older records" banner that appears after load.
+let activeFetchMonths = 6;
+
 // ── SIDEBAR HELPERS ──────────────────────────────────────────────────────────
 function toggleSidebar() {
   const nav = document.getElementById('navbar');
@@ -1850,7 +1855,10 @@ async function apiFetch(silent = false) {
   if (!silent) showLoading(true,'Loading data…');
   try {
     const u   = getUser();
-    const url = u ? `${scriptUrl()}?email=${encodeURIComponent(u.email)}` : scriptUrl();
+    let url   = u ? `${scriptUrl()}?email=${encodeURIComponent(u.email)}` : scriptUrl();
+    // Pass the active date window so the server only returns records in that range.
+    // Default is 6 months; admins can expand via the "Load older records" banner.
+    url += `&months=${activeFetchMonths}`;
     const res = await fetch(url, {redirect:'follow'});
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
@@ -1872,6 +1880,8 @@ async function apiFetch(silent = false) {
     buildSupervisorFilter();
     populateSpecialistDropdown();
     saveDataCache(cachedData, cachedHierarchy); // persist for next visit
+    // Show "load older" banner for admins when we're in a windowed view
+    updateOlderRecordsBanner(data.cutoff);
     return cachedData;
   } catch(err) {
     console.error(err);
@@ -1879,6 +1889,45 @@ async function apiFetch(silent = false) {
     return cachedData;
   } finally {
     if (!silent) showLoading(false);
+  }
+}
+
+// Show a non-intrusive banner telling admins they're seeing a windowed view.
+function updateOlderRecordsBanner(cutoff) {
+  if (cachedRole !== 'admin') return; // only admins need to know
+  let banner = document.getElementById('older-records-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'older-records-banner';
+    banner.style.cssText = 'display:none;background:#FEF3C7;border:1px solid #F59E0B;color:#92400E;' +
+      'padding:.5rem 1rem;font-size:.8rem;display:flex;align-items:center;gap:.75rem;' +
+      'border-radius:.375rem;margin:.5rem 1rem 0;';
+    const mc = document.getElementById('main-content');
+    if (mc) mc.prepend(banner);
+  }
+  if (activeFetchMonths < 24 && cutoff) {
+    const since = new Date(cutoff).toLocaleDateString('en-US',{month:'short',year:'numeric'});
+    banner.innerHTML = `⚠️ Showing records from <strong>${since}</strong> onward (last ${activeFetchMonths} months). ` +
+      `<button onclick="loadOlderRecords()" style="background:#F59E0B;color:#fff;border:none;padding:.25rem .6rem;` +
+      `border-radius:.25rem;cursor:pointer;font-size:.8rem;white-space:nowrap">Load all records (up to 24 months)</button>`;
+    banner.style.display = 'flex';
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+async function loadOlderRecords() {
+  activeFetchMonths = 24;
+  await apiFetch(false);
+  // Re-render the current tab so the new records show immediately
+  const active = document.querySelector('.tab-content.active');
+  if (active) {
+    const id = active.id;
+    if (id === 'tab-dash')    applyDashFilters();
+    else if (id === 'tab-agents')  renderAgentsTab();
+    else if (id === 'tab-supervisors') renderSupervisorsTab();
+    else if (id === 'tab-records')     renderRecordsTable();
+    else if (id === 'tab-corrections') renderCorrections();
   }
 }
 
