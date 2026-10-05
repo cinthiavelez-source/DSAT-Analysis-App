@@ -1188,7 +1188,7 @@ tr:hover td{background:#FAFBFF}
         <div id="an-month-controls" style="display:none;align-items:flex-end">
           <div class="form-group" style="margin:0">
             <label>Month</label>
-            <input type="month" id="analytics-month" onchange="analyticsMonth=this.value;renderAnalytics()" style="width:180px">
+            <input type="month" id="analytics-month" onchange="onAnalyticsMonthChange(this.value)" style="width:180px">
           </div>
         </div>
 
@@ -1430,7 +1430,7 @@ tr:hover td{background:#FAFBFF}
         <!-- Month picker (primary) -->
         <div class="form-group" style="min-width:170px;margin:0">
           <label style="font-size:.75rem;font-weight:700;color:#4F46E5">📅 Month</label>
-          <select id="corr-filter-month" onchange="renderCorrections()" style="font-weight:600;color:#1E293B">
+          <select id="corr-filter-month" onchange="onCorrMonthChange(this.value)" style="font-weight:600;color:#1E293B">
             <option value="">All Time</option>
           </select>
         </div>
@@ -1601,14 +1601,41 @@ const SLA_DAYS            = 15;
 const APP_START_MONTH     = '2026-04'; // App went live — never show months before this
 
 // ─── LOCAL DATA CACHE (instant re-load on return visits) ─────────────────────
-const DATA_CACHE_KEY = 'dsat_data_v6'; // bumped — normalizeRow now includes correctionAcknowledgedAt
+const DATA_CACHE_KEY = 'dsat_data_v7'; // bumped — normalizeRow now includes correctionAcknowledgedAt
 const DATA_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
 // ─── FETCH MONTH ─────────────────────────────────────────────────────────────
 // Which calendar month to load from the server. Format: 'YYYY-MM' or '' (all-time window).
 // Defaults to the current month on load; changes when the user selects a different month.
 // This keeps payloads small — only the selected month's records are loaded at a time.
-let activeFetchMonth = new Date().toISOString().slice(0, 7); // e.g. '2026-09'
+let activeFetchMonth = (() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`; })(); // e.g. '2026-10'
+
+// ─── PREVIOUS-MONTH CACHE (for MoM comparison) ───────────────────────────────
+// Stores previous month records fetched silently in the background so the dashboard
+// MoM stat cards work correctly even in single-month mode.
+// Key: 'YYYY-MM', value: array of normalizedRow records.
+const _prevMonthCache = {};
+let   _prevMonthFetching = {}; // prevents duplicate fetches for the same month
+
+async function _fetchPrevMonthForMoM(prevMonth) {
+  if (_prevMonthFetching[prevMonth]) return; // already in flight
+  _prevMonthFetching[prevMonth] = true;
+  try {
+    const u   = getUser();
+    let url   = u ? `${scriptUrl()}?email=${encodeURIComponent(u.email)}` : scriptUrl();
+    url      += `&month=${encodeURIComponent(prevMonth)}`;
+    const res  = await fetch(url, { redirect: 'follow' });
+    const data = await res.json();
+    if (data.error || !data.records) return;
+    _prevMonthCache[prevMonth] = (data.records || []).map(normalizeRow);
+    // Re-render the dashboard now that previous month data is available
+    if (currentPage === 'dashboard') applyDashFilters();
+  } catch(_) {
+    // Silent failure — MoM just stays "— no prev"
+  } finally {
+    _prevMonthFetching[prevMonth] = false;
+  }
+}
 
 // ── SIDEBAR HELPERS ──────────────────────────────────────────────────────────
 function toggleSidebar() {
@@ -1647,14 +1674,18 @@ function loadDataCache() {
     if (!raw) return null;
     const obj = JSON.parse(raw);
     if (Date.now() - (obj.ts || 0) > DATA_CACHE_TTL) return null;
-    return obj; // {records, hierarchy, role?, ts}
+    // Cache is only valid for the month it was saved for (prevents showing e.g. August
+    // records while the filters say October).
+    if ((obj.month || '') !== (activeFetchMonth || '')) return null;
+    return obj; // {records, hierarchy, month, ts}
   } catch(e) { return null; }
 }
-function saveDataCache(records, hierarchy) {
+function saveDataCache(records, hierarchy, month) {
   // Include cachedRole so we can restore it immediately on next page load,
   // preventing the viewer-role flash when the background refresh is slow/fails.
-  try { localStorage.setItem(DATA_CACHE_KEY, JSON.stringify({records, hierarchy, role: cachedRole, ts: Date.now()})); }
-  catch(e) {} // storage full — fail silently
+  try { localStorage.setItem(DATA_CACHE_KEY, JSON.stringify({records, hierarchy, month: (month === undefined ? activeFetchMonth : month) || '', ts: Date.now()})); }
+  catch(e) {}
+  try { localStorage.setItem('dsat_role_v1', cachedRole); } catch(e) {} // storage full — fail silently
 }
 // Admin: force-bust both server cache and browser cache, then reload fresh data
 async function forceRefreshData() {
@@ -1880,29 +1911,42 @@ function showLogin() {
 
 // ══ API ════════════════════════════════════════════════════════════════════════
 // silent=true → no loading overlay, used for background refreshes
+let _fetchSeq   = 0;     // increments on every request; stale responses are discarded
+let _lastFetchOk = true; // did the most recent apiFetch succeed?
 async function apiFetch(silent = false) {
   if (!silent) showLoading(true,'Loading data…');
+  const seq        = ++_fetchSeq;
+  const monthAtReq = activeFetchMonth;
+  _lastFetchOk = false;
   try {
     const u   = getUser();
-    let url   = u ? `${scriptUrl()}?email=${encodeURIComponent(u.email)}` : scriptUrl();
-    // Pass the active calendar month so the server returns only that month's records.
-    // Defaults to the current month; changes when the user selects a different month.
-    // Empty string → rolling window (all-time). Both are cheap because the server
-    // caches by month key, so the same month is never re-read from the sheet.
-    if (activeFetchMonth) url += `&month=${encodeURIComponent(activeFetchMonth)}`;
-    const res = await fetch(url, {redirect:'follow'});
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
+    let url   = `${scriptUrl()}?email=${encodeURIComponent(u?.email || '')}`;
+    // A specific month → exact calendar month. '' (All Time) → full 24-month window.
+    url += monthAtReq ? `&month=${encodeURIComponent(monthAtReq)}` : `&months=24`;
+
+    // Retry on transient Apps Script failures (HTML error page / HTTP error)
+    let data = null, lastErr = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt) await new Promise(r => setTimeout(r, attempt * 1500));
+      try {
+        const res = await fetch(url, {redirect:'follow'});
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        data = JSON.parse(await res.text());       // throws on HTML error pages
+        if (data.error) { const e = new Error(data.error); e._app = true; throw e; }
+        break;
+      } catch(e) { lastErr = e; data = null; if (e._app) break; }
+    }
+    if (!data) throw lastErr || new Error('No response');
+
+    // A newer request started while this one was in flight → discard this response
+    // so an old/slow month can never overwrite the month the user is looking at.
+    if (seq !== _fetchSeq) return cachedData;
+
     cachedData         = (data.records      || []).map(normalizeRow);
     cachedHierarchy    = (data.hierarchy    || []);
     cachedHierarchyAll = (data.hierarchyAll || cachedHierarchy);
     if (data.role) {
-      // Never silently downgrade to viewer on a background/silent refresh.
-      // A transient Roles-sheet read failure on the server returns 'viewer' for
-      // everyone — that's the root cause of the random viewer-access bug during
-      // peak usage.  Only apply the new role if it is equal or higher than what
-      // we already have; a lower role requires a full manual reload to take effect.
+      // Never silently downgrade on a background refresh (see role-downgrade bug).
       const roleRank = { admin: 3, supervisor: 2, analyst: 1, viewer: 0 };
       const newRank  = roleRank[data.role]  ?? 0;
       const curRank  = roleRank[cachedRole] ?? 0;
@@ -1910,30 +1954,87 @@ async function apiFetch(silent = false) {
     }
     buildSupervisorFilter();
     populateSpecialistDropdown();
-    saveDataCache(cachedData, cachedHierarchy); // persist for next visit
+    saveDataCache(cachedData, cachedHierarchy, monthAtReq);
+    _lastFetchOk = true;
     return cachedData;
   } catch(err) {
     console.error(err);
-    if (!silent) showToast('⚠️ Could not load data. Check the script URL.','#EF4444');
+    if (!silent) showToast('⚠️ Could not load data: ' + (err.message || 'server error') + '. Please press Refresh.','#EF4444');
     return cachedData;
   } finally {
     if (!silent) showLoading(false);
   }
 }
 
-// Fetch a specific calendar month from the server (called by the month filter).
-// If month is '' (All Time), fetch a 12-month rolling window instead.
+// ─── MONTH SELECTORS (single source of truth = activeFetchMonth) ─────────────
+function _curMonth() {
+  const n = new Date();
+  return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`;
+}
+// Every month from APP_START_MONTH to today (newest first) — NOT derived from loaded
+// data, so months that aren't loaded yet are always selectable.
+function _monthList() {
+  const out = []; const n = new Date(); let y = n.getFullYear(), m = n.getMonth()+1;
+  for (let i = 0; i < 60; i++) {
+    const ym = `${y}-${String(m).padStart(2,'0')}`;
+    if (ym < APP_START_MONTH) break;
+    out.push(ym); m--; if (m === 0) { m = 12; y--; }
+  }
+  return out;
+}
+function _monthSelectOptions() {
+  return '<option value="">All Time</option>' + _monthList().map(ym =>
+    `<option value="${ym}">${new Date(ym+'-02').toLocaleString('en-US',{month:'long',year:'numeric'})}</option>`).join('');
+}
+const MONTH_SELECT_IDS = ['rec-month-filter','sup-filter-month','agents-filter-month','corr-filter-month'];
+function _ensureMonthOptions(id) {
+  const el = document.getElementById(id);
+  if (el && el.options.length < 3) { el.innerHTML = _monthSelectOptions(); el.value = activeFetchMonth; }
+  return el;
+}
+function _syncMonthSelectors() {
+  MONTH_SELECT_IDS.forEach(id => {
+    const el = document.getElementById(id); if (!el) return;
+    if (el.options.length < 3) el.innerHTML = _monthSelectOptions();
+    el.value = activeFetchMonth;
+  });
+  const d = document.getElementById('dash-filter-month'); if (d) d.value = activeFetchMonth;
+  analyticsMonth = activeFetchMonth || _curMonth();
+  const a = document.getElementById('analytics-month'); if (a) a.value = activeFetchMonth;
+}
+
+// Fetch a month (or '' = All Time) from the server, then re-render the visible page.
+// If the fetch fails the previous month stays active so filters never lie about the data.
 async function fetchMonth(month) {
+  const prevMonth = activeFetchMonth;
+  _trendData = null;
   activeFetchMonth = month || '';
+  Object.keys(_prevMonthCache).forEach(k => delete _prevMonthCache[k]);
   await apiFetch(false);
-  // Re-render whichever page is currently showing
+  if (!_lastFetchOk) {
+    // Retry once automatically before giving up
+    await apiFetch(false);
+  }
+  if (!_lastFetchOk) {
+    activeFetchMonth = prevMonth;           // revert: data on screen is still prevMonth's
+    showToast('❌ Could not load that period. Showing the previous one — please try again.','#EF4444');
+  }
+  _syncMonthSelectors();
+  _rerenderCurrentPage();
+}
+function _rerenderCurrentPage() {
   if      (currentPage === 'dashboard')    applyDashFilters();
-  else if (currentPage === 'records')      renderRecordsGrouped();
+  else if (currentPage === 'records')      { _populateRecWeekFilter(); _populateRecReasonFilter(); renderRecordsGrouped(); if (_recView==='list') renderRecordsList(); }
   else if (currentPage === 'queue')        renderQueue(_queueSourceData());
   else if (currentPage === 'agents')       { _buildAgentsFilters(); renderAgents(); }
   else if (currentPage === 'supervisors')  renderSupervisors();
   else if (currentPage === 'corrections')  renderCorrections();
   else if (currentPage === 'disputes')     renderDisputes();
+  else if (currentPage === 'analytics')    { buildAnalyticsFilters(); renderAnalytics(); }
+  updateRoleUI();
+}
+function onAnalyticsMonthChange(v) {
+  if (v !== activeFetchMonth) fetchMonth(v); else { analyticsMonth = v; renderAnalytics(); }
 }
 
 // _apiPostOnce: single attempt — used internally by apiPost's retry loop.
@@ -3159,29 +3260,16 @@ function _prevMonthStr(ym) {
 // If the user selects a different month than what's currently loaded, fetch it from
 // the server. Otherwise just re-apply client-side filters on the cached data.
 function onDashMonthChange(newMonth) {
-  if (newMonth !== activeFetchMonth) {
+  if ((newMonth || '') !== activeFetchMonth) {
     fetchMonth(newMonth);
   } else {
     applyDashFilters();
   }
 }
 
-function onSupMonthChange(newMonth) {
-  if (newMonth && newMonth !== activeFetchMonth) {
-    fetchMonth(newMonth).then(() => renderSupervisors());
-  } else {
-    renderSupervisors();
-  }
-}
-
-function onAgentsMonthChange(newMonth) {
-  if (newMonth && newMonth !== activeFetchMonth) {
-    fetchMonth(newMonth).then(() => { _buildAgentsFilters(); renderAgents(); });
-  } else {
-    _buildAgentsFilters();
-    renderAgents();
-  }
-}
+function onSupMonthChange(v)    { if (v !== activeFetchMonth) fetchMonth(v); else renderSupervisors(); }
+function onAgentsMonthChange(v) { if (v !== activeFetchMonth) fetchMonth(v); else { _buildAgentsFilters(); renderAgents(); } }
+function onCorrMonthChange(v)   { if (v !== activeFetchMonth) fetchMonth(v); else renderCorrections(); }
 
 function applyDashFilters() {
   const v = id => document.getElementById(id)?.value || '';
@@ -3202,12 +3290,25 @@ function applyDashFilters() {
   let filtered = month ? base.filter(r => (r.dsatDate||r.submittedAt||'').slice(0,7) === month) : base;
 
   // Previous month (only when month filter is active)
+  // IMPORTANT: with per-month fetching, cachedData only contains the selected month.
+  // If the previous month's records aren't loaded, prevData must be null — not [] —
+  // so stat cards show "— no prev" instead of an absurd 20000%+ increase.
   let prevData = null;
   if (month) {
     const prevMonth = _prevMonthStr(month);
     if (prevMonth) {
-      prevData = _applyBaseFilters([...cachedData], opts)
-        .filter(r => (r.dsatDate||r.submittedAt||'').slice(0,7) === prevMonth);
+      // Only compute MoM if we actually have records from the previous month in cache.
+      // An empty result here means "not loaded", not "truly zero DSATs that month".
+      const prevInCache = cachedData.filter(r => (r.dsatDate||r.submittedAt||'').slice(0,7) === prevMonth);
+      if (prevInCache.length > 0) {
+        prevData = _applyBaseFilters(prevInCache, opts);
+      } else if (_prevMonthCache[prevMonth]) {
+        // Silently pre-fetched previous month — use that for MoM
+        prevData = _applyBaseFilters([..._prevMonthCache[prevMonth]], opts);
+      } else {
+        // Kick off a silent background fetch for the previous month so MoM appears shortly
+        _fetchPrevMonthForMoM(prevMonth, opts);
+      }
     }
   }
 
@@ -3222,7 +3323,7 @@ function applyDashFilters() {
 function clearDashFilters() {
   DASH_FILTER_IDS.forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
   // Reset month filter to current month and refetch if needed
-  const currentMonth = new Date().toISOString().slice(0,7);
+  const currentMonth = _curMonth();
   const mEl = document.getElementById('dash-filter-month');
   if (mEl) mEl.value = currentMonth;
   const badge = document.getElementById('dash-filter-badge');
@@ -3266,35 +3367,14 @@ function _weekLabel(isoWeek) {
 }
 
 function _populateRecMonthFilter() {
-  const sel = document.getElementById('rec-month-filter');
-  if (!sel || !cachedData.length) return;
-  const months = [...new Set(cachedData.map(r => (r.dsatDate||r.submittedAt||'').slice(0,7)).filter(Boolean))].sort().reverse();
-  const currentMonth = new Date().toISOString().slice(0,7);
-  const current = sel.value;
-  sel.innerHTML = '<option value="">All Time</option>' +
-    months.map(m => {
-      const d = new Date(m+'-02');
-      const label = d.toLocaleString('en-US',{month:'long',year:'numeric'});
-      return `<option value="${m}"${m===currentMonth&&!current?'selected':''}>${label}</option>`;
-    }).join('');
-  if (!current) sel.value = currentMonth;
+  _syncMonthSelectors();
   _populateRecWeekFilter();
   _populateRecReasonFilter();
 }
 
 function _onRecMonthChange() {
   const month = document.getElementById('rec-month-filter')?.value || '';
-  if (month && month !== activeFetchMonth) {
-    // Need to fetch this month from server — sync the dashboard filter too
-    const dashEl = document.getElementById('dash-filter-month');
-    if (dashEl) dashEl.value = month;
-    fetchMonth(month).then(() => {
-      _populateRecWeekFilter();
-      _populateRecReasonFilter();
-      renderRecordsGrouped();
-    });
-    return;
-  }
+  if (month !== activeFetchMonth) { fetchMonth(month); return; }
   _populateRecWeekFilter();
   _populateRecReasonFilter();
   renderRecordsGrouped();
@@ -3737,25 +3817,31 @@ function clearSupFilters() {
   renderSupervisors();
 }
 
-function _populateSupMonthFilter() {
-  const sel = document.getElementById('sup-filter-month');
-  if (!sel || !cachedData.length) return;
-  const months = [...new Set(cachedData.map(r=>(r.dsatDate||r.submittedAt||'').slice(0,7)).filter(Boolean))].sort().reverse();
-  const currentMonth = new Date().toISOString().slice(0,7);
-  const current = sel.value;
-  sel.innerHTML = '<option value="">All Time</option>' +
-    months.map(m => {
-      const d = new Date(m+'-02');
-      const label = d.toLocaleString('en-US',{month:'long',year:'numeric'});
-      return `<option value="${m}"${m===currentMonth&&!current?'selected':''}>${label}</option>`;
-    }).join('');
-  if (!current) sel.value = currentMonth;
+function _populateSupMonthFilter() { _syncMonthSelectors(); }
+
+// ─── MULTI-MONTH TREND DATA ──────────────────────────────────────────────────
+// Trend views (WoW/MoM charts, 4-week table) need several months. They load the last
+// 6 months silently, once per 5 minutes, WITHOUT touching cachedData / the month filter.
+let _trendData = null, _trendTs = 0, _trendLoading = false;
+function _trendSource() { return _trendData || cachedData; }
+async function _loadTrendData(rerender) {
+  if (_trendLoading) return;
+  if (_trendData && Date.now() - _trendTs < 5*60*1000) return;
+  if (activeFetchMonth === '') { _trendData = cachedData; _trendTs = Date.now(); return; } // All Time already has everything
+  _trendLoading = true;
+  try {
+    const u   = getUser();
+    const res = await fetch(`${scriptUrl()}?email=${encodeURIComponent(u?.email||'')}&months=6`, {redirect:'follow'});
+    const d   = JSON.parse(await res.text());
+    if (d && d.records) { _trendData = d.records.map(normalizeRow); _trendTs = Date.now(); if (rerender) rerender(); }
+  } catch(_) {} finally { _trendLoading = false; }
 }
 
-function getSupBaseData() {
+function getSupBaseData(opts) {
+  opts = opts || {};
   const v  = id => document.getElementById(id)?.value || '';
-  let data = [...cachedData];
-  const month    = v('sup-filter-month');
+  let data = [...(opts.trend ? _trendSource() : cachedData)];
+  const month    = opts.noMonth ? '' : v('sup-filter-month');
   const sup      = v('sup-filter-supervisor');
   const mgr      = v('sup-filter-manager');
   const channel  = v('sup-filter-channel');
@@ -3830,15 +3916,19 @@ function renderSupervisors() {
   // ── WoW / MoM Chart ────────────────────────────────────────────────────────
   const WEEKS_SHOWN = 8;
   let periodLabels = [], supWeekData = {};
-  supervisors.forEach(s => supWeekData[s] = []);
+  // Trend charts use the multi-month store (not just the selected month)
+  _loadTrendData(renderSupervisors);
+  const trendAll    = getSupBaseData({ trend:true, noMonth:true });
+  const chartSups   = [...new Set(trendAll.map(r=>r.supervisorName).filter(Boolean))];
+  chartSups.forEach(s => supWeekData[s] = []);
 
   if (supMode === 'WoW') {
     for (let i = WEEKS_SHOWN - 1; i >= 0; i--) {
       const off  = supWeekOff - i;
       const wb   = getWeekBounds(off);
-      const wData = filterByPeriod(data, wb.start, wb.end);
+      const wData = filterByPeriod(trendAll, wb.start, wb.end);
       periodLabels.push(shortDate(wb.start));
-      supervisors.forEach(s => {
+      chartSups.forEach(s => {
         supWeekData[s].push(wData.filter(r=>r.supervisorName===s).length);
       });
     }
@@ -3857,9 +3947,9 @@ function renderSupervisors() {
     }
     months.forEach(({ ym, d }) => {
       const mb = getMonthBounds(ym);
-      const mData = filterByPeriod(data, mb.start, mb.end);
+      const mData = filterByPeriod(trendAll, mb.start, mb.end);
       periodLabels.push(d.toLocaleString('en-US',{month:'short',year:'2-digit'}));
-      supervisors.forEach(s => {
+      chartSups.forEach(s => {
         supWeekData[s].push(mData.filter(r=>r.supervisorName===s).length);
       });
     });
@@ -3871,12 +3961,12 @@ function renderSupervisors() {
   // Destroy old chart
   if (chartInstances['chart-sup-wow']) { chartInstances['chart-sup-wow'].destroy(); delete chartInstances['chart-sup-wow']; }
   const wowCtx = document.getElementById('chart-sup-wow');
-  if (wowCtx && supervisors.length) {
+  if (wowCtx && chartSups.length) {
     chartInstances['chart-sup-wow'] = new Chart(wowCtx, {
       type: 'line',
       data: {
         labels: periodLabels,
-        datasets: supervisors.slice(0,8).map((s, i) => ({
+        datasets: chartSups.slice(0,8).map((s, i) => ({
           label: s,
           data: supWeekData[s],
           borderColor: SUP_COLORS[i % SUP_COLORS.length],
@@ -3903,7 +3993,7 @@ function renderSupervisors() {
         }
       }
     });
-  } else if (wowCtx && !supervisors.length) {
+  } else if (wowCtx && !chartSups.length) {
     const c = wowCtx.getContext('2d');
     c.clearRect(0,0,wowCtx.width,wowCtx.height);
   }
@@ -4033,7 +4123,8 @@ function renderSupFeedbackTable() {
   if (!wrap) return;
 
   // Base data: only Agent-Related records that have a feedback status
-  const base = getSupBaseData().filter(r =>
+  _loadTrendData(renderSupFeedbackTable);
+  const base = getSupBaseData({ trend:true, noMonth:true }).filter(r =>
     r.mainReason === 'Agent - Related' && r.feedbackStatus !== ''
   );
 
@@ -4439,42 +4530,43 @@ function _queueSourceData() {
   return _viewingAllPending ? (_pendingAllData || []) : cachedData;
 }
 
+// Fetch ALL pending agent-related cases (all months). Used by the sidebar badge on load
+// and by the "Show all months" view. Result is stored in _pendingAllData.
+async function _fetchPendingAll() {
+  const u   = getUser();
+  const res = await fetch(`${scriptUrl()}?email=${encodeURIComponent(u?.email||'')}&pendingOnly=true`, {redirect:'follow'});
+  const d   = JSON.parse(await res.text());
+  if (d.error) throw new Error(d.error);
+  const rows = (d.records || []).map(normalizeRow);
+  rows.sort((a,b) => {
+    const da = a.dsatDate || a.submittedAt || a.analysisDate || '';
+    const db = b.dsatDate || b.submittedAt || b.analysisDate || '';
+    return da < db ? -1 : da > db ? 1 : 0;
+  });
+  _pendingAllData = rows;
+  return rows;
+}
+// Silent badge refresh — never shows errors or spinners
+async function _refreshPendingBadge() {
+  try { await _fetchPendingAll(); updateRoleUI(); if (currentPage==='queue' && _viewingAllPending) renderQueue(_pendingAllData); } catch(_) {}
+}
+
 async function toggleAllPendingView() {
   if (_viewingAllPending) { exitAllPendingView(); return; }
   _viewingAllPending = true;
   _updateQueueAllMonthsUI();
-  if (!_pendingAllData) {
-    // First time — fetch from server
-    showLoading(true, 'Loading all pending cases…');
-    try {
-      const u   = getUser();
-      let url   = u ? `${scriptUrl()}?email=${encodeURIComponent(u.email)}` : scriptUrl();
-      url      += '&pendingOnly=true';
-      const res  = await fetch(url, { redirect: 'follow' });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      _pendingAllData = (data.records || []).map(normalizeRow);
-      // Sort oldest-first so the most overdue cases appear at the top
-      _pendingAllData.sort((a, b) => {
-        const da = a.dsatDate || a.submittedAt || a.analysisDate || '';
-        const db = b.dsatDate || b.submittedAt || b.analysisDate || '';
-        return da < db ? -1 : da > db ? 1 : 0;
-      });
-    } catch(err) {
-      showToast('❌ Could not load pending cases: ' + err.message, '#EF4444');
-      _viewingAllPending = false;
-      _updateQueueAllMonthsUI();
-      return;
-    } finally {
-      showLoading(false);
-    }
+  showLoading(true, 'Loading all pending cases…');
+  try { await _fetchPendingAll(); }
+  catch(err) {
+    showToast('❌ Could not load pending cases: ' + err.message, '#EF4444');
+    _viewingAllPending = false; _updateQueueAllMonthsUI(); showLoading(false); return;
   }
+  showLoading(false);
   renderQueue(_pendingAllData);
 }
 
 function exitAllPendingView() {
   _viewingAllPending = false;
-  _pendingAllData    = null; // clear so next open always fetches fresh
   _updateQueueAllMonthsUI();
   renderQueue(cachedData);
 }
@@ -4797,6 +4889,8 @@ async function saveFeedback() {
     // Local update — no full re-fetch needed
     const _fbi = cachedData.findIndex(r => r.id === id);
     if (_fbi >= 0) cachedData[_fbi] = {...cachedData[_fbi], feedbackStatus: status, supervisorFeedback: feedback, feedbackProvidedAt: new Date().toISOString()};
+    if (_pendingAllData) _pendingAllData = _pendingAllData.filter(r => !(String(r.id) === String(id) && status !== 'Pending'));
+    _refreshPendingBadge();
     renderQueue(cachedData);
     updateRoleUI();
   } catch(err) { showToast('❌ '+err.message,'#EF4444'); }
@@ -5802,19 +5896,8 @@ function toggleGuideSection(idx) {
 // ══ AGENTS PERFORMANCE ════════════════════════════════════════════════════════
 
 function _buildAgentsFilters() {
-  // Month picker
-  const monthSel = document.getElementById('agents-filter-month');
-  if (monthSel) {
-    const months = [...new Set(cachedData.map(r=>(r.dsatDate||r.submittedAt||'').slice(0,7)).filter(Boolean))].sort().reverse();
-    const currentMonth = new Date().toISOString().slice(0,7);
-    const prev = monthSel.value;
-    monthSel.innerHTML = '<option value="">All Time</option>' +
-      months.map(m => {
-        const d = new Date(m+'-02');
-        return `<option value="${m}"${m===(prev||currentMonth)?'selected':''}>${d.toLocaleString('en-US',{month:'long',year:'numeric'})}</option>`;
-      }).join('');
-    if (!prev) monthSel.value = currentMonth;
-  }
+  // Month picker (static list; value follows the globally loaded month)
+  _syncMonthSelectors();
   // Supervisor
   const supSel = document.getElementById('agents-filter-supervisor');
   if (supSel) {
@@ -5876,8 +5959,7 @@ function clearAgentsFilters() {
   ['agents-filter-supervisor','agents-filter-reason','agents-filter-channel'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
-  const ms = document.getElementById('agents-filter-month');
-  if (ms) ms.value = new Date().toISOString().slice(0,7);
+  if (activeFetchMonth !== _curMonth()) { fetchMonth(_curMonth()); return; }
   renderAgents();
 }
 
@@ -6150,20 +6232,8 @@ function renderCorrections() {
     <th>Correction Rate</th>
     <th>Last Corrected</th>`;
 
-  // ── Populate month picker ─────────────────────────────────────────────────
-  const monthSel = document.getElementById('corr-filter-month');
-  if (monthSel) {
-    const months = [...new Set(cachedData.map(r=>(r.dsatDate||r.submittedAt||'').slice(0,7)).filter(Boolean))].sort().reverse();
-    const currentMonth = new Date().toISOString().slice(0,7);
-    const prevMonth = monthSel.value;
-    monthSel.innerHTML = '<option value="">All Time</option>' +
-      months.map(m => {
-        const d = new Date(m+'-02');
-        const label = d.toLocaleString('en-US',{month:'long',year:'numeric'});
-        return `<option value="${m}"${m===(prevMonth||currentMonth)?'selected':''}>${label}</option>`;
-      }).join('');
-    if (!prevMonth) monthSel.value = currentMonth;
-  }
+  // ── Month picker: static list; keep user's value (date-range filters blank it) ──
+  _ensureMonthOptions('corr-filter-month');
 
   // ── Populate submitter / editor dropdowns ─────────────────────────────────
   const submitters = [...new Set(cachedData.map(r=>r.submittedByName).filter(Boolean))].sort();
@@ -6356,9 +6426,10 @@ function clearCorrFilters() {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   // Reset month picker to current month
-  const monthSel = document.getElementById('corr-filter-month');
-  if (monthSel) monthSel.value = new Date().toISOString().slice(0,7);
   expandedSubmitters.clear();
+  if (activeFetchMonth !== _curMonth()) { fetchMonth(_curMonth()); return; }
+  const monthSel = document.getElementById('corr-filter-month');
+  if (monthSel) monthSel.value = activeFetchMonth;
   renderCorrections();
 }
 
@@ -6684,14 +6755,15 @@ async function initApp() {
     ticketInput.addEventListener('input', debouncedApplyFilters);
   }
   document.getElementById('f-analysis-date').value = new Date().toISOString().slice(0,10);
-  analyticsMonth = new Date().toISOString().slice(0,7);
+  analyticsMonth = activeFetchMonth || _curMonth();
   const mEl = document.getElementById('analytics-month');
-  if (mEl) mEl.value = analyticsMonth;
+  if (mEl) mEl.value = activeFetchMonth;
 
   // Default dashboard to current month
   const dashMonthEl = document.getElementById('dash-filter-month');
-  if (dashMonthEl && !dashMonthEl.value) dashMonthEl.value = new Date().toISOString().slice(0,7);
+  if (dashMonthEl) dashMonthEl.value = activeFetchMonth;
 
+  { const r = localStorage.getItem('dsat_role_v1'); if (r && r !== 'viewer') cachedRole = r; }
   // ── Fast admin bootstrap — don't wait for the server ────────────────────────
   // If the signed-in user is the hardcoded admin, set cachedRole immediately.
   // This prevents the DEFAULT_ADMIN from seeing "VIEWER" during the server round-trip
@@ -6757,14 +6829,16 @@ async function initApp() {
       });
   }
 
+  _refreshPendingBadge();
   // ── Auto-refresh every 5 minutes ─────────────────────────────────────────────
   setInterval(async () => {
+    _refreshPendingBadge();
     const d = await apiFetch(true);
     cachedData = d;
     if (isModalOpen()) return;
     if (currentPage==='dashboard')   applyDashFilters();
     else if (currentPage==='records') renderRecordsGrouped();
-    else if (currentPage==='queue')   renderQueue(d);
+    else if (currentPage==='queue')   renderQueue(_queueSourceData());
     updateRoleUI();
   }, 300000);
 }
