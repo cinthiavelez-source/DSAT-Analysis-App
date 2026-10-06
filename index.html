@@ -755,13 +755,19 @@ tr:hover td{background:#FAFBFF}
     <!-- Queue filters (admin only — supervisors already see only their own) -->
     <div class="card" id="queue-filter-bar" style="padding:.85rem 1.25rem;margin-bottom:1.25rem;display:none">
       <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-end">
-        <div class="form-group" style="min-width:200px;margin:0">
+        <div class="form-group" style="min-width:170px;margin:0">
+          <label style="font-size:.75rem;font-weight:700;color:#4F46E5">📅 Month</label>
+          <select id="queue-filter-month" onchange="onQueueMonthChange(this.value)" style="font-weight:600;color:#1E293B">
+            <option value="">All Time</option>
+          </select>
+        </div>
+        <div class="form-group" id="queue-mgr-group" style="min-width:200px;margin:0">
           <label style="font-size:.75rem">Manager</label>
           <select id="queue-filter-manager" onchange="renderQueue(_queueSourceData())">
             <option value="">All Managers</option>
           </select>
         </div>
-        <div class="form-group" style="min-width:200px;margin:0">
+        <div class="form-group" id="queue-sup-group" style="min-width:200px;margin:0">
           <label style="font-size:.75rem">Supervisor</label>
           <select id="queue-filter-supervisor" onchange="renderQueue(_queueSourceData())">
             <option value="">All Supervisors</option>
@@ -1911,6 +1917,7 @@ function showLogin() {
 
 // ══ API ════════════════════════════════════════════════════════════════════════
 // silent=true → no loading overlay, used for background refreshes
+let _latestMonth = '';   // newest month that has data (from server)
 let _fetchSeq   = 0;     // increments on every request; stale responses are discarded
 let _lastFetchOk = true; // did the most recent apiFetch succeed?
 async function apiFetch(silent = false) {
@@ -1929,7 +1936,11 @@ async function apiFetch(silent = false) {
     for (let attempt = 0; attempt < 3; attempt++) {
       if (attempt) await new Promise(r => setTimeout(r, attempt * 1500));
       try {
-        const res = await fetch(url, {redirect:'follow'});
+        const ctl = new AbortController();
+        const to  = setTimeout(() => ctl.abort(), 40000);           // never hang forever
+        let res;
+        try { res = await fetch(url, {redirect:'follow', signal: ctl.signal}); }
+        finally { clearTimeout(to); }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         data = JSON.parse(await res.text());       // throws on HTML error pages
         if (data.error) { const e = new Error(data.error); e._app = true; throw e; }
@@ -1942,6 +1953,7 @@ async function apiFetch(silent = false) {
     // so an old/slow month can never overwrite the month the user is looking at.
     if (seq !== _fetchSeq) return cachedData;
 
+    _latestMonth       = data.latestMonth || _latestMonth;
     cachedData         = (data.records      || []).map(normalizeRow);
     cachedHierarchy    = (data.hierarchy    || []);
     cachedHierarchyAll = (data.hierarchyAll || cachedHierarchy);
@@ -1986,7 +1998,7 @@ function _monthSelectOptions() {
   return '<option value="">All Time</option>' + _monthList().map(ym =>
     `<option value="${ym}">${new Date(ym+'-02').toLocaleString('en-US',{month:'long',year:'numeric'})}</option>`).join('');
 }
-const MONTH_SELECT_IDS = ['rec-month-filter','sup-filter-month','agents-filter-month','corr-filter-month'];
+const MONTH_SELECT_IDS = ['rec-month-filter','sup-filter-month','agents-filter-month','corr-filter-month','queue-filter-month'];
 function _ensureMonthOptions(id) {
   const el = document.getElementById(id);
   if (el && el.options.length < 3) { el.innerHTML = _monthSelectOptions(); el.value = activeFetchMonth; }
@@ -1995,6 +2007,7 @@ function _ensureMonthOptions(id) {
 function _syncMonthSelectors() {
   MONTH_SELECT_IDS.forEach(id => {
     const el = document.getElementById(id); if (!el) return;
+    if (id === 'queue-filter-month' && _viewingAllPending) { if (el.options.length < 3) el.innerHTML = _monthSelectOptions(); return; }
     if (el.options.length < 3) el.innerHTML = _monthSelectOptions();
     el.value = activeFetchMonth;
   });
@@ -4554,6 +4567,7 @@ async function _refreshPendingBadge() {
 async function toggleAllPendingView() {
   if (_viewingAllPending) { exitAllPendingView(); return; }
   _viewingAllPending = true;
+  { const qm = document.getElementById('queue-filter-month'); if (qm) qm.value = ''; }
   _updateQueueAllMonthsUI();
   showLoading(true, 'Loading all pending cases…');
   try { await _fetchPendingAll(); }
@@ -4567,6 +4581,7 @@ async function toggleAllPendingView() {
 
 function exitAllPendingView() {
   _viewingAllPending = false;
+  { const qm = document.getElementById('queue-filter-month'); if (qm) qm.value = activeFetchMonth; }
   _updateQueueAllMonthsUI();
   renderQueue(cachedData);
 }
@@ -4600,7 +4615,14 @@ function renderQueue(data) {
 
   // Show filter bar for admins only; populate dropdowns
   const filterBar = document.getElementById('queue-filter-bar');
-  if (filterBar) filterBar.style.display = isAdmin() ? '' : 'none';
+  if (filterBar) filterBar.style.display = '';
+  ['queue-mgr-group','queue-sup-group'].forEach(id => { const g = document.getElementById(id); if (g) g.style.display = isAdmin() ? '' : 'none'; });
+  { const qm = document.getElementById('queue-filter-month');
+    if (qm && qm.options.length < 3) { qm.innerHTML = _monthSelectOptions(); qm.value = _viewingAllPending ? '' : activeFetchMonth; } }
+  if (_viewingAllPending) {
+    const qMonth = document.getElementById('queue-filter-month')?.value || '';
+    if (qMonth) queue = queue.filter(r => (r.dsatDate||r.submittedAt||r.analysisDate||'').slice(0,7) === qMonth);
+  }
   if (isAdmin()) {
     const qMgrEl = document.getElementById('queue-filter-manager');
     if (qMgrEl) {
@@ -4838,10 +4860,19 @@ function slaDaysLeft(submittedAt) {
   return Math.ceil((deadline - new Date())/(24*60*60*1000));
 }
 
+function onQueueMonthChange(v) {
+  if (_viewingAllPending) { renderQueue(_pendingAllData || []); return; }   // client-side on all-pending set
+  if (v !== activeFetchMonth) fetchMonth(v); else renderQueue(cachedData);   // shared month, loads from server
+}
+
 function clearQueueFilters() {
   ['queue-filter-manager','queue-filter-supervisor','queue-filter-status'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
+  const qm = document.getElementById('queue-filter-month');
+  if (_viewingAllPending) { if (qm) qm.value = ''; renderQueue(_pendingAllData || []); return; }
+  if (activeFetchMonth !== _curMonth()) { fetchMonth(_curMonth()); return; }
+  if (qm) qm.value = activeFetchMonth;
   renderQueue(cachedData);
 }
 
@@ -6739,6 +6770,33 @@ function clearDisputeFilters() {
   renderDisputes();
 }
 
+// First load with no browser cache: fetch, fall back to the latest month with data if the
+// current month is still empty, and show a clear error + Retry instead of a stuck skeleton.
+async function _initialLoad() {
+  let d = await apiFetch(true);
+  if (!_lastFetchOk) {
+    document.getElementById('dash-stats').innerHTML =
+      `<div style="grid-column:1/-1;padding:1.5rem;text-align:center;color:#B91C1C">
+         ⚠️ The server is slow or unavailable right now.
+         <button class="btn btn-warning btn-sm" style="margin-left:.75rem" onclick="_initialLoad()">↺ Retry</button>
+       </div>`;
+    return;
+  }
+  if (!d.length && activeFetchMonth === _curMonth() && _latestMonth && _latestMonth < _curMonth()) {
+    const label = new Date(_latestMonth+'-02').toLocaleString('en-US',{month:'long',year:'numeric'});
+    activeFetchMonth = _latestMonth;
+    d = await apiFetch(true);
+    showToast(`No DSATs recorded yet this month — showing ${label}.`, '#F59E0B');
+  }
+  cachedData = d;
+  _syncMonthSelectors();
+  updateRoleUI();
+  if (!isModalOpen()) {
+    if (_effectiveRole() === 'viewer') navTo('agents');
+    else _rerenderCurrentPage();
+  }
+}
+
 // ══ BOOT ══════════════════════════════════════════════════════════════════════
 async function initApp() {
   const u = getUser();
@@ -6812,24 +6870,10 @@ async function initApp() {
            <div class="skeleton" style="height:.55rem;width:40%;margin-top:.5rem"></div>
          </div>`
       ).join('');
-    apiFetch(true)
-      .then(d => {
-        cachedData = d;
-        updateRoleUI();
-        if (!isModalOpen()) {
-          if (_effectiveRole() === 'viewer') navTo('agents');
-          else applyDashFilters();
-        }
-      })
-      .catch(() => {
-        document.getElementById('dash-stats').innerHTML =
-          `<div style="grid-column:1/-1;padding:1.5rem;text-align:center;color:#EF4444">
-             ⚠️ Could not load data. Check the Script URL in Admin settings.
-           </div>`;
-      });
+    _initialLoad();
   }
 
-  _refreshPendingBadge();
+  setTimeout(_refreshPendingBadge, 5000);   // staggered: don't compete with the main load
   // ── Auto-refresh every 5 minutes ─────────────────────────────────────────────
   setInterval(async () => {
     _refreshPendingBadge();
