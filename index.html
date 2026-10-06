@@ -1769,7 +1769,18 @@ let previewRole     = null;   // null = real admin; 'supervisor'/'analyst' = pre
 if (typeof ChartDataLabels !== 'undefined') Chart.register(ChartDataLabels);
 
 // ══ USER ══════════════════════════════════════════════════════════════════════
-function getUser()         { try { return JSON.parse(localStorage.getItem(USER_KEY)); } catch(e){ return null; } }
+// Decode base64url → UTF-8 text (atob alone turns "ñ" into "Ã±")
+function _b64utf8(b64) {
+  b64 = b64.replace(/-/g,'+').replace(/_/g,'/'); while (b64.length % 4) b64 += '=';
+  const bin = atob(b64); const bytes = Uint8Array.from(bin, ch => ch.charCodeAt(0));
+  return new TextDecoder('utf-8').decode(bytes);
+}
+// Repair names saved earlier with the double-encoding bug (e.g. "CastaÃ±eda" → "Castañeda")
+function _fixMoji(str) {
+  if (typeof str !== 'string' || !/[ÃÂ]/.test(str)) return str;
+  try { return new TextDecoder('utf-8',{fatal:true}).decode(Uint8Array.from(str, ch => ch.charCodeAt(0))); } catch(_) { return str; }
+}
+function getUser()         { try { const u = JSON.parse(localStorage.getItem(USER_KEY)); if (u && u.name) u.name = _fixMoji(u.name); return u; } catch(e){ return null; } }
 function setUser(u)        { localStorage.setItem(USER_KEY, JSON.stringify(u)); }
 function scriptUrl()       { return DEFAULT_SCRIPT_URL; }
 // When in preview mode, role functions use previewRole instead of real role
@@ -1866,7 +1877,7 @@ function initGoogleSSO() {
 function handleGoogleCredential(response) {
   try {
     // Decode the JWT payload (no signature verification needed — Google already did it)
-    const payload = JSON.parse(atob(response.credential.split('.')[1]));
+    const payload = JSON.parse(_b64utf8(response.credential.split('.')[1]));
     const email   = (payload.email || '').toLowerCase();
     const name    = payload.name  || email.split('@')[0];
 
@@ -1957,6 +1968,13 @@ async function apiFetch(silent = false) {
     cachedData         = (data.records      || []).map(normalizeRow);
     cachedHierarchy    = (data.hierarchy    || []);
     cachedHierarchyAll = (data.hierarchyAll || cachedHierarchy);
+    // Keep reviews the admin just made until the server confirms them (guards against stale responses)
+    cachedData = cachedData.map(r => {
+      const o = _reviewOverrides[r.id];
+      if (!o) return r;
+      if (r.adminReviewedAt) { delete _reviewOverrides[r.id]; return r; }
+      return normalizeRow({ ...r, adminReviewedBy: o.by, adminReviewedAt: o.at });
+    });
     if (data.role) {
       // Never silently downgrade on a background refresh (see role-downgrade bug).
       const roleRank = { admin: 3, supervisor: 2, analyst: 1, viewer: 0 };
@@ -3418,20 +3436,29 @@ function _populateRecReasonFilter() {
 }
 
 // ── Admin: Mark a record as reviewed ─────────────────────────────────────────
+const _reviewOverrides = {};   // id → {by, at} — survives any stale server response until confirmed
 async function markAdminReviewed(id) {
+  const u   = getUser();
+  const now = new Date().toISOString();
+  const by  = u?.name||u?.email||'Admin';
+  const idx = cachedData.findIndex(r => r.id === id);
+  const before = idx >= 0 ? cachedData[idx] : null;
+  // Optimistic: show it as reviewed immediately (the save can take several seconds)
+  _reviewOverrides[id] = { by, at: now };
+  if (idx >= 0) cachedData[idx] = normalizeRow({ ...cachedData[idx], adminReviewedBy: by, adminReviewedAt: now });
+  closeModal('detail-modal');
+  renderRecordsGrouped();
+  if (document.getElementById('records-list-content').style.display !== 'none') renderRecordsList();
   try {
-    const u   = getUser();
-    const now = new Date().toISOString();
-    await apiPost({ action:'adminReview', dsatId:id, reviewedBy: u?.name||u?.email||'Admin', reviewedAt: now });
-    const idx = cachedData.findIndex(r => r.id === id);
-    if (idx >= 0) {
-      cachedData[idx] = normalizeRow({ ...cachedData[idx], adminReviewedBy: u?.name||u?.email||'Admin', adminReviewedAt: now });
-    }
+    await apiPost({ action:'adminReview', dsatId:id, reviewedBy: by, reviewedAt: now });
     showToast('✅ Marked as reviewed.');
-    closeModal('detail-modal');
+  } catch(e) {
+    delete _reviewOverrides[id];
+    if (idx >= 0 && before) cachedData[idx] = before;
     renderRecordsGrouped();
     if (document.getElementById('records-list-content').style.display !== 'none') renderRecordsList();
-  } catch(e) { showToast('❌ '+e.message,'#EF4444'); }
+    showToast('❌ Could not save the review — please try again. ('+e.message+')','#EF4444');
+  }
 }
 
 // ── Records view toggle (admin only) ─────────────────────────────────────────
